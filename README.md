@@ -16,12 +16,11 @@ Entity4j is a minimal, type-safe object relational mapper for Java. It lets you 
     - [Database Configuration](#database-configuration)
     - [Table Creation](#table-creation)
     - [Querying with Lambdas](#querying-with-lambdas)
+- [Fluent Mappings](#fluent-mappings)
 - [Filters API](#filters-api)
 - [Complex Query Example](#complex-query-example)
 - [CRUD Operations](#crud-operations)
 - [Debugging and SQL Output](#debugging-and-sql-output)
-- [Extending DbContext](#extending-dbcontext)
-- 
 - [Features](#features)
 - [License](#license)
 
@@ -113,11 +112,9 @@ public class User {
 
 ## Fluent Mappings
 
-Entity4j supports fluent mappings like below, first you must extend ``DbContext``. The first argument is the name of the field, the second argument is column name, or else you can add complexity.
+Entity4j supports fluent mappings like below, first you must extend ``DbContext``. The the basic mapping first argument is the name of the field, the second argument is column name, or else you can add complexity by using ``column(...)`` seen below.
 
-Fluent mappings will always take priority over annotations, if both are mapped.
-
-An example is below.
+Fluent mappings will **always** take priority over annotations, if both are mapped.
 
 ```java
 public class UsersDbContext extends DbContext {
@@ -132,8 +129,9 @@ public class UsersDbContext extends DbContext {
             .hasId("id", true) // auto-generated PK
     
             // basic mapping for defaults
-            .map("active", "active")
+            .map("active", "is_active") // or even just: map("active")
     
+            // advanced mapping
             .column("name", c -> c
                     .name("full_name")
                     .length(100)
@@ -147,19 +145,21 @@ public class UsersDbContext extends DbContext {
     
             // @NotMapped
             .ignore("cachedDisplayName")
+            
+            // And finished mapping User!
             .done();
-		}
+    }
 }
 ```
 
 ### Database Configuration
 
-Entity4j supports MySQL, PostgreSQL, SQL Server, and SQLite. It can auto-detect the database dialect from the connection, but explicitly setting the dialect is recommended for better performance and reliability:
+Entity4j supports MySQL, PostgreSQL, SQL Server, and SQLite. It can auto-detect the database dialect from the connection, but explicitly setting the dialect is recommended for reliability:
 
 ```java
 // Explicit dialect configuration (recommended)
 try (Connection conn = DriverManager.getConnection(...);
-     DbContext ctx = new DbContext(conn, DatabaseDialect.MYSQL)) {
+     DbContext ctx = new DbContext(conn, SqlDialectType.MYSQL)) {
     // Explicitly set to MySQL
 }
 
@@ -170,9 +170,9 @@ try (Connection conn = DriverManager.getConnection(...);
 }
 
 // Other supported dialects:
-// DatabaseDialect.POSTGRESQL
-// DatabaseDialect.SQLSERVER  
-// DatabaseDialect.SQLITE
+// SqlDialectType.POSTGRESQL
+// SqlDialectType.SQLSERVER  
+// SqlDialectType.SQLITE
 ```
 
 ### Table Creation
@@ -194,9 +194,9 @@ This example shwows updating, querying, and deleting.
 ```java
 // Update
 User ada = ctx.from(User.class)
-              .filter(f -> f.equals(User::getName, "Ada Lovelace"))
-              .first()
-              .orElseThrow();
+    .filter(f -> f.equals(User::getName, "Ada Lovelace"))
+    .first()
+    .orElseThrow();
 ada.setRating(new java.math.BigDecimal("4.95"));
 ctx.update(ada);
 
@@ -238,16 +238,16 @@ ctx.delete(ada);
 ```java
 List<User> advanced = ctx.from(User.class)
     .filter(f -> f.open()
-                  .greaterOrEquals(User::getAge, 30)
-                  .and()
-                  .less(User::getAge, 60)
-                  .close()
-                  .or()
-                  .open()
-                  .equals(User::getActive, true)
-                  .and()
-                  .like(User::getName, "%Ada%")
-                  .close())
+        .greaterOrEquals(User::getAge, 30)
+        .and()
+        .less(User::getAge, 60)
+        .close()
+        .or()
+        .open()
+        .equals(User::getActive, true)
+        .and()
+        .like(User::getName, "%Ada%")
+        .close())
     .orderBy(User::getRating, false)
     .limit(10)
     .toList();
@@ -358,8 +358,8 @@ List<User> richActiveUsers = ctx.from(User.class).as("u")
     .leftJoin(Order.class, "o", on -> 
         on.eq(User::getId, Order::getUserId))       // ON u.id = o.user_id
     .filter(f -> f.equals(User::getStatus, "ACTIVE")
-                 .and()
-                 .greater(Order.class, Order::getTotal, 1000.0)) // o.total > 1000
+        .and()
+        .greater(Order.class, Order::getTotal, 1000.0)) // o.total > 1000
     .orderBy(User::getName, true)
     .thenBy(Order.class, Order::getPlacedAt, false)
     .limit(50)
