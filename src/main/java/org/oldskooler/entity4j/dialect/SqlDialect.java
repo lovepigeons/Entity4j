@@ -25,7 +25,7 @@ public interface SqlDialect {
     String autoIncrementClause();
 
     /** Map a Java field (and optional @Column) to a dialect-specific SQL type. */
-    String resolveSqlType(Field f);
+    <T> String resolveSqlType(TableMeta<T> m, Field f, String col);
 
     /** True if INSERT should append "RETURNING [id]" instead of relying on getGeneratedKeys(). */
     default boolean useInsertReturning() { return false; }

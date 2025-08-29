@@ -2,6 +2,7 @@ package org.oldskooler.entity4j.dialect.types;
 
 import org.oldskooler.entity4j.annotations.Column;
 import org.oldskooler.entity4j.dialect.SqlDialect;
+import org.oldskooler.entity4j.mapping.ColumnMeta;
 import org.oldskooler.entity4j.mapping.TableMeta;
 
 import java.lang.reflect.Field;
@@ -18,13 +19,22 @@ public class SqliteDialect implements SqlDialect {
         for (Map.Entry<String,String> e : m.propToColumn.entrySet()) {
             String prop = e.getKey(); String col = e.getValue();
             Field f = m.propToField.get(prop);
-            Column ca = f.getAnnotation(Column.class);
-
+            boolean nullable = true; // ca == null || ca.nullable();
             boolean isId = (m.idField != null && f.getName().equals(m.idField.getName()));
             boolean auto = isId && m.idAuto;
-            boolean nullable = ca == null || ca.nullable();
 
-            String type = resolveSqlType(f);
+            Column colAnn = f.getAnnotation(Column.class);
+
+            if (colAnn == null) {
+                if (m.columns.containsKey(col)) {
+                    ColumnMeta meta = m.columns.get(col);
+                    nullable = meta.nullable;
+                }
+            } else {
+                nullable = colAnn.nullable();
+            }
+
+            String type = resolveSqlType(m, f, col);
             StringBuilder d = new StringBuilder(q(col)).append(' ').append(type);
             if (!nullable) d.append(" NOT NULL");
             defs.add(d.toString());
@@ -57,18 +67,36 @@ public class SqliteDialect implements SqlDialect {
     }
 
     @Override
-    public String resolveSqlType(Field f) {
+    public <T> String resolveSqlType(TableMeta<T> m, Field f, String col) {
         // SQLite is dynamically typed; we pick pragmatic defaults
-        Column ann = f.getAnnotation(Column.class);
-        if (ann != null) {
-            String user = SqlDialect.userTypeOrNull(ann.type());
-            int length = ann.length(); int precision = ann.precision(); int scale = Math.max(0, ann.scale());
-            if (user != null) {
-                if ((user.contains("CHAR") || user.equals("VARCHAR")) && length > 0) return "TEXT"; // normalize
-                if ((user.equals("DECIMAL") || user.equals("NUMERIC")) && precision > 0) return "NUMERIC";
-                return user;
+        Column colAnn = f.getAnnotation(Column.class);
+
+        String user = null;
+        int precision = 0;
+        int scale = 0;
+        int length = -1;
+
+        if (colAnn == null) {
+            if (m.columns.containsKey(col)) {
+                ColumnMeta meta = m.columns.get(col);
+
+                user = SqlDialect.userTypeOrNull(meta.effectiveType());
+                precision = meta.precision;
+                length = meta.length;
             }
+        } else {
+
+            user = SqlDialect.userTypeOrNull(colAnn.type());
+            precision = colAnn.precision();
+            length = colAnn.length();
         }
+
+        if (user != null) {
+            if ((user.contains("CHAR") || user.equals("VARCHAR")) && length > 0) return "TEXT"; // normalize
+            if ((user.equals("DECIMAL") || user.equals("NUMERIC")) && precision > 0) return "NUMERIC";
+            return user;
+        }
+
         Class<?> t = f.getType();
         if (t == Long.class || t == long.class || t == Integer.class || t == int.class
                 || t == Short.class || t == short.class || t == Byte.class || t == byte.class) return "INTEGER";

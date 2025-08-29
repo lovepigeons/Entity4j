@@ -10,14 +10,16 @@ public final class ColumnMeta {
     public final String type;       // explicit SQL type override (e.g. VARCHAR, DECIMAL, JSONB)
     public final int precision;     // for DECIMAL/NUMERIC; 0 means "unspecified"
     public final int scale;         // for DECIMAL/NUMERIC; only used if precision > 0
+    public final int length;
 
-    public ColumnMeta(String property, String name, boolean nullable, String type, int precision, int scale) {
+    public ColumnMeta(String property, String name, boolean nullable, String type, int precision, int scale, int length) {
         this.property = Objects.requireNonNull(property, "property");
         this.name = Objects.requireNonNull(name, "name");
         this.nullable = nullable;
         this.type = type == null ? "" : type;
         this.precision = precision;
         this.scale = scale;
+        this.length = length;
     }
 
     /** Helper: return the best-effort type spec, e.g. DECIMAL(10,2) if precision/scale present. */

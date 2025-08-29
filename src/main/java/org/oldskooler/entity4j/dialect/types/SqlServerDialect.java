@@ -2,6 +2,7 @@ package org.oldskooler.entity4j.dialect.types;
 
 import org.oldskooler.entity4j.annotations.Column;
 import org.oldskooler.entity4j.dialect.SqlDialect;
+import org.oldskooler.entity4j.mapping.ColumnMeta;
 import org.oldskooler.entity4j.mapping.TableMeta;
 
 import java.lang.reflect.Field;
@@ -20,13 +21,22 @@ public class SqlServerDialect implements SqlDialect {
         for (Map.Entry<String,String> e : m.propToColumn.entrySet()) {
             String prop = e.getKey(); String col = e.getValue();
             Field f = m.propToField.get(prop);
-            Column ca = f.getAnnotation(Column.class);
-
+            boolean nullable = true; // ca == null || ca.nullable();
             boolean isId = (m.idField != null && f.getName().equals(m.idField.getName()));
             boolean auto = isId && m.idAuto;
-            boolean nullable = ca == null || ca.nullable();
 
-            String type = resolveSqlType(f);
+            Column colAnn = f.getAnnotation(Column.class);
+
+            if (colAnn == null) {
+                if (m.columns.containsKey(col)) {
+                    ColumnMeta meta = m.columns.get(col);
+                    nullable = meta.nullable;
+                }
+            } else {
+                nullable = colAnn.nullable();
+            }
+
+            String type = resolveSqlType(m, f, col);
             StringBuilder d = new StringBuilder(q(col)).append(' ').append(type);
             if (auto) d.append(autoIncrementClause());
             if (!nullable) d.append(" NOT NULL");
@@ -48,24 +58,42 @@ public class SqlServerDialect implements SqlDialect {
     }
 
     @Override
-    public String resolveSqlType(Field f) {
-        Class<?> t = f.getType();
-        Column ann = f.getAnnotation(Column.class);
-        if (ann != null) {
-            String user = SqlDialect.userTypeOrNull(ann.type());
-            int precision = ann.precision();
-            int scale = Math.max(0, ann.scale());
-            int length = ann.length();
-            if (user != null) {
-                if ((user.contains("CHAR") || user.equals("VARCHAR") || user.equals("NVARCHAR")) && length > 0)
-                    return user + "(" + length + ")";
-                if ((user.equals("DECIMAL") || user.equals("NUMERIC")) && precision > 0)
-                    return "DECIMAL(" + precision + "," + scale + ")";
-                return user;
+    public <T> String resolveSqlType(TableMeta<T> m, Field f, String col) {
+        Column colAnn = f.getAnnotation(Column.class);
+
+        String user = null;
+        int precision = 0;
+        int scale = 0;
+        int length = -1;
+
+        if (colAnn == null) {
+            if (m.columns.containsKey(col)) {
+                ColumnMeta meta = m.columns.get(col);
+
+                user = SqlDialect.userTypeOrNull(meta.effectiveType());
+                precision = meta.precision;
+                scale = meta.scale;
+                length = meta.length;
             }
-            if (precision > 0) return "DECIMAL(" + precision + "," + scale + ")";
-            if (length > 0 && t == String.class) return "NVARCHAR(" + length + ")";
+        } else {
+
+            user = SqlDialect.userTypeOrNull(colAnn.type());
+            precision = colAnn.precision();
+            scale = Math.max(0, colAnn.scale());
+            length = colAnn.length();
         }
+
+        Class<?> t = f.getType();
+        if (user != null) {
+            if ((user.contains("CHAR") || user.equals("VARCHAR") || user.equals("NVARCHAR")) && length > 0)
+                return user + "(" + length + ")";
+            if ((user.equals("DECIMAL") || user.equals("NUMERIC")) && precision > 0)
+                return "DECIMAL(" + precision + "," + scale + ")";
+            return user;
+        }
+        if (precision > 0) return "DECIMAL(" + precision + "," + scale + ")";
+        if (length > 0 && t == String.class) return "NVARCHAR(" + length + ")";
+
         if (t == Long.class || t == long.class) return "BIGINT";
         if (t == Integer.class || t == int.class) return "INT";
         if (t == Short.class || t == short.class) return "SMALLINT";

@@ -212,7 +212,9 @@ public abstract class IDbContext implements AutoCloseable {
             }
             String sql = "UPDATE " + dialect.q(m.table) + " SET " + String.join(", ", sets) +
                     " WHERE " + dialect.q(m.idColumn) + " = ?";
+
             params.add(idVal);
+
             try (PreparedStatement ps = connection.prepareStatement(sql)) {
                 bindParams(ps, params);
                 return ps.executeUpdate();

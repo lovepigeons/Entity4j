@@ -113,7 +113,9 @@ public class User {
 
 ## Fluent Mappings
 
-Entity4j supports fluent mappings like below, first you must extend ``DbContext``. The first argument is the name of the field, the second argument is column name. 
+Entity4j supports fluent mappings like below, first you must extend ``DbContext``. The first argument is the name of the field, the second argument is column name, or else you can add complexity.
+
+Fluent mappings will always take priority over annotations, if both are mapped.
 
 An example is below.
 
@@ -125,14 +127,27 @@ public class UsersDbContext extends DbContext {
 
     @Override
     protected void onModelCreating(ModelBuilder model) {
-		model.entity(User.class)
-			.toTable("users")
-			.hasId("id", true)                 // @Id(auto = true)
-			.map("name", "full_name")          // @Column(name = "full_name", ...)
-			.mapSame("rating")                 // column "rating" (precision/scale not expressed here)
-			.mapSame("active")                 // column "active"
-			// Do NOT map cachedDisplayName -> behaves like @NotMapped
-			.done();
+        model.entity(User.class)
+            .toTable("users")
+            .hasId("id", true) // auto-generated PK
+    
+            // basic mapping for defaults
+            .map("active", "active")
+    
+            .column("name", c -> c
+                    .name("full_name")
+                    .length(100)
+                    .nullable(false))
+    
+            .column("rating", c -> c
+                    .type("DECIMAL") // optional: or let dialect infer
+                    .precision(5)
+                    .scale(2)
+                    .nullable(true))     // default true unless you want NOT NULL
+    
+            // @NotMapped
+            .ignore("cachedDisplayName")
+            .done();
 		}
 }
 ```

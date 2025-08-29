@@ -2,6 +2,7 @@ package org.oldskooler.entity4j.dialect.types;
 
 import org.oldskooler.entity4j.annotations.Column;
 import org.oldskooler.entity4j.dialect.SqlDialect;
+import org.oldskooler.entity4j.mapping.ColumnMeta;
 import org.oldskooler.entity4j.mapping.TableMeta;
 
 import java.lang.reflect.Field;
@@ -20,14 +21,27 @@ public class MySqlDialect implements SqlDialect {
     public <T> String createTableDdl(TableMeta<T> m, boolean ifNotExists) {
         List<String> defs = new ArrayList<>();
         for (Map.Entry<String,String> e : m.propToColumn.entrySet()) {
-            String prop = e.getKey(); String col = e.getValue();
+            String prop = e.getKey();
+            String col = e.getValue();
+
+            boolean nullable = true;
+
             Field f = m.propToField.get(prop);
             Column colAnn = f.getAnnotation(Column.class);
 
-            String type = resolveSqlType(f);
+            if (colAnn == null) {
+                if (m.columns.containsKey(col)) {
+                    ColumnMeta meta = m.columns.get(col);
+                    nullable = meta.nullable;
+                }
+            } else {
+                nullable = colAnn.nullable();
+            }
+
+            String type = resolveSqlType(m, f, col);
             boolean isId   = (m.idField != null && f.getName().equals(m.idField.getName()));
             boolean auto   = isId && m.idAuto;
-            boolean nullable = colAnn == null || colAnn.nullable();
+            // boolean nullable = colAnn == null || colAnn.nullable();
 
             StringBuilder d = new StringBuilder(q(col)).append(' ').append(type);
             if (auto) d.append(autoIncrementClause());
@@ -39,33 +53,48 @@ public class MySqlDialect implements SqlDialect {
         return "CREATE TABLE" + (ifNotExists ? " IF NOT EXISTS" : "") + " " + q(m.table) +
                 " (\n  " + String.join(",\n  ", defs) + "\n)";
     }
-
     @Override
     public <T> String dropTableDdl(TableMeta<T> m, boolean ifExists) {
         return "DROP TABLE" + (ifExists ? " IF EXISTS" : "") + " " + q(m.table);
     }
 
     @Override
-    public String resolveSqlType(Field f) {
+    public <T> String resolveSqlType(TableMeta<T> m, Field f, String col) {
         Column colAnn = f.getAnnotation(Column.class);
-        if (colAnn != null) {
-            String user = SqlDialect.userTypeOrNull(colAnn.type());
-            int precision = colAnn.precision();
-            int scale = Math.max(0, colAnn.scale());
-            int length = colAnn.length();
 
-            if (user != null) {
-                if (user.contains("CHAR") || user.equals("VARCHAR")) {
-                    return (length > 0) ? user + "(" + length + ")" : user;
-                }
-                if ((user.equals("DECIMAL") || user.equals("NUMERIC")) && precision > 0) {
-                    return "DECIMAL(" + precision + "," + scale + ")";
-                }
-                return user; // DATETIME(6), BIGINT, etc.
+        String user = null;
+        int precision = 0;
+        int scale = 0;
+        int length = -1;
+
+        if (colAnn == null) {
+            if (m.columns.containsKey(col)) {
+                ColumnMeta meta = m.columns.get(col);
+
+                user = SqlDialect.userTypeOrNull(meta.effectiveType());
+                precision = meta.precision;
+                scale = meta.scale;
+                length = meta.length;
             }
-            if (precision > 0) return "DECIMAL(" + precision + "," + scale + ")";
-            if (length > 0 && f.getType() == String.class) return "VARCHAR(" + length + ")";
+        } else {
+
+            user = SqlDialect.userTypeOrNull(colAnn.type());
+            precision = colAnn.precision();
+            scale = Math.max(0, colAnn.scale());
+            length = colAnn.length();
         }
+
+        if (user != null) {
+            if (user.contains("CHAR") || user.equals("VARCHAR")) {
+                return (length > 0) ? user + "(" + length + ")" : user;
+            }
+            if ((user.equals("DECIMAL") || user.equals("NUMERIC")) && precision > 0) {
+                return "DECIMAL(" + precision + "," + scale + ")";
+            }
+            return user; // DATETIME(6), BIGINT, etc.
+        }
+        if (precision > 0) return "DECIMAL(" + precision + "," + scale + ")";
+        if (length > 0 && f.getType() == String.class) return "VARCHAR(" + length + ")";
 
         Class<?> t = f.getType();
         if (t == Long.class || t == long.class) return "BIGINT";
