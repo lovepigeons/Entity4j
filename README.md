@@ -1,6 +1,6 @@
 # Entity4j
 
-A lightweight Java ORM inspired by Entity Framework (Java + Entity Framework = J-ENny)
+A lightweight Java ORM inspired by Entity Framework (Entity Framework for Java = Entity4j)
 
 Entity4j is a minimal, type-safe object relational mapper for Java. It lets you define entities with annotations, map them to database tables, and build queries with lambda expressions in a concise way. It also provides helpers to automatically create tables from annotated classes, with support for multiple database dialects including MySQL, PostgreSQL, SQL Server, and SQLite.
 
