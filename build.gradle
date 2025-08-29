@@ -1,0 +1,19 @@
+plugins {
+    id 'java-library'
+}
+
+group = 'org.oldskooler'
+version = '1.0.0'
+
+repositories {
+    mavenCentral()
+    maven { url 'https://jitpack.io' }
+}
+
+dependencies { }
+
+java {
+    withSourcesJar()
+    withJavadocJar()
+    toolchain { languageVersion = JavaLanguageVersion.of(8) }
+}
