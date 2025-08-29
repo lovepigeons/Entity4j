@@ -21,6 +21,7 @@ Entity4j is a minimal, type-safe object relational mapper for Java. It lets you 
 - [CRUD Operations](#crud-operations)
 - [Debugging and SQL Output](#debugging-and-sql-output)
 - [Extending DbContext](#extending-dbcontext)
+- 
 - [Features](#features)
 - [License](#license)
 
@@ -107,6 +108,32 @@ public class User {
     private String cachedDisplayName;
     
     // getters and setters...
+}
+```
+
+## Fluent Mappings
+
+Entity4j supports fluent mappings like below, first you must extend ``DbContext``. The first argument is the name of the field, the second argument is column name. 
+
+An example is below.
+
+```java
+public class UsersDbContext extends DbContext {
+    public UserDbContext(Connection connection, SqlDialectType dialectType) {
+        super(connection, dialectType);
+    }
+
+    @Override
+    protected void onModelCreating(ModelBuilder model) {
+		model.entity(User.class)
+			.toTable("users")
+			.hasId("id", true)                 // @Id(auto = true)
+			.map("name", "full_name")          // @Column(name = "full_name", ...)
+			.mapSame("rating")                 // column "rating" (precision/scale not expressed here)
+			.mapSame("active")                 // column "active"
+			// Do NOT map cachedDisplayName -> behaves like @NotMapped
+			.done();
+		}
 }
 ```
 
@@ -241,27 +268,6 @@ System.out.println(
        .filter(f -> f.equals(User::getName, "Ada Lovelace"))
        .toSqlWithParams()
 );
-```
-
-## Extending DbContext
-
-```java
-public class MyDbContext extends DbContext {
-    public MyDbContext(Connection conn) {
-        super(conn);
-    }
-    
-    // With explicit dialect (recommended)
-    public MyDbContext(Connection conn, DatabaseDialect dialect) {
-        super(conn, dialect);
-    }
-
-    public List<User> getActiveUsers() {
-        return from(User.class)
-            .filter(f -> f.equals(User::getActive, true))
-            .toList();
-    }
-}
 ```
 
 ## Advanced Features

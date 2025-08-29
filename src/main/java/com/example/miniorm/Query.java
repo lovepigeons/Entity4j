@@ -10,7 +10,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class Query<T> {
-    private final DbContext ctx;
+    private final IDbContext ctx;
     private final TableMeta<T> meta;
 
     // WHERE builder + params (unchanged behavior)
@@ -29,7 +29,7 @@ public class Query<T> {
     private final List<JoinPart<?>> joins = new ArrayList<>();
     private final Map<Class<?>, AliasMeta<?>> aliases = new LinkedHashMap<>();
 
-    Query(DbContext ctx, TableMeta<T> meta) {
+    Query(IDbContext ctx, TableMeta<T> meta) {
         this.ctx = ctx;
         this.meta = meta;
         // Register base type in alias map; alias will be null until as() is called
@@ -176,7 +176,7 @@ public class Query<T> {
     }
 
     private <J> Query<T> addJoin(Class<J> type, String alias, String kind, Function<On<T, J>, On<T, J>> onBuilder) {
-        TableMeta<J> jm = TableMeta.of(type);
+        TableMeta<J> jm = TableMeta.of(type, ctx.mappingRegistry());
         if (alias == null || alias.isEmpty())
             throw new IllegalArgumentException("Join alias must be provided for " + type.getName());
         aliases.put(type, new AliasMeta<>(jm, alias));
