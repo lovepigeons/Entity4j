@@ -1,8 +1,8 @@
-package com.example.miniorm.dialect.types;
+package org.oldskooler.entity4j.dialect.types;
 
-import com.example.miniorm.annotations.Column;
-import com.example.miniorm.dialect.SqlDialect;
-import com.example.miniorm.meta.TableMeta;
+import org.oldskooler.entity4j.annotations.Column;
+import org.oldskooler.entity4j.dialect.SqlDialect;
+import org.oldskooler.entity4j.mapping.TableMeta;
 
 import java.lang.reflect.Field;
 import java.util.*;

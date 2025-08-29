@@ -1,9 +1,9 @@
-package com.example.miniorm.dialect;
+package org.oldskooler.entity4j.dialect;
 
-import com.example.miniorm.dialect.types.MySqlDialect;
-import com.example.miniorm.dialect.types.PostgresDialect;
-import com.example.miniorm.dialect.types.SqlServerDialect;
-import com.example.miniorm.dialect.types.SqliteDialect;
+import org.oldskooler.entity4j.dialect.types.MySqlDialect;
+import org.oldskooler.entity4j.dialect.types.PostgresDialect;
+import org.oldskooler.entity4j.dialect.types.SqlServerDialect;
+import org.oldskooler.entity4j.dialect.types.SqliteDialect;
 
 public enum SqlDialectType {
     MYSQL,

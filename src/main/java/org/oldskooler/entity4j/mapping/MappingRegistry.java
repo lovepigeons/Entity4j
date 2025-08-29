@@ -1,4 +1,4 @@
-package com.example.miniorm.mapping;
+package org.oldskooler.entity4j.mapping;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

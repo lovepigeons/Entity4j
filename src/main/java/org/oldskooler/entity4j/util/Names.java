@@ -1,4 +1,4 @@
-package com.example.miniorm.util;
+package org.oldskooler.entity4j.util;
 
 public final class Names {
     private Names() {}

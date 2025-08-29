@@ -1,9 +1,10 @@
-package com.example.miniorm;
+package org.oldskooler.entity4j;
 
-import com.example.miniorm.dialect.*;
-import com.example.miniorm.mapping.MappingRegistry;
-import com.example.miniorm.mapping.ModelBuilder;
-import com.example.miniorm.meta.TableMeta;
+import org.oldskooler.entity4j.dialect.SqlDialect;
+import org.oldskooler.entity4j.dialect.SqlDialectType;
+import org.oldskooler.entity4j.mapping.MappingRegistry;
+import org.oldskooler.entity4j.mapping.ModelBuilder;
+import org.oldskooler.entity4j.mapping.TableMeta;
 
 import java.lang.reflect.Field;
 import java.sql.*;
@@ -250,7 +251,7 @@ public abstract class IDbContext implements AutoCloseable {
     }
 
     /* ---- helpers ---- */
-    <T> List<T> executeQuery(com.example.miniorm.meta.TableMeta<T> m, String sql, List<Object> params) {
+    <T> List<T> executeQuery(TableMeta<T> m, String sql, List<Object> params) {
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             bindParams(ps, params);
             try (ResultSet rs = ps.executeQuery()) {

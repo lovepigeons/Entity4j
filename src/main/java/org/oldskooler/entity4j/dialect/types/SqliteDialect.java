@@ -1,8 +1,8 @@
-package com.example.miniorm.dialect.types;
+package org.oldskooler.entity4j.dialect.types;
 
-import com.example.miniorm.annotations.Column;
-import com.example.miniorm.dialect.SqlDialect;
-import com.example.miniorm.meta.TableMeta;
+import org.oldskooler.entity4j.annotations.Column;
+import org.oldskooler.entity4j.dialect.SqlDialect;
+import org.oldskooler.entity4j.mapping.TableMeta;
 
 import java.lang.reflect.Field;
 import java.util.*;
@@ -59,7 +59,7 @@ public class SqliteDialect implements SqlDialect {
     @Override
     public String resolveSqlType(Field f) {
         // SQLite is dynamically typed; we pick pragmatic defaults
-        com.example.miniorm.annotations.Column ann = f.getAnnotation(com.example.miniorm.annotations.Column.class);
+        Column ann = f.getAnnotation(Column.class);
         if (ann != null) {
             String user = SqlDialect.userTypeOrNull(ann.type());
             int length = ann.length(); int precision = ann.precision(); int scale = Math.max(0, ann.scale());

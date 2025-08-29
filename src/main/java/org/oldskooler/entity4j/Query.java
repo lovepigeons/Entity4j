@@ -1,9 +1,9 @@
-package com.example.miniorm;
+package org.oldskooler.entity4j;
 
-import com.example.miniorm.functions.SFunction;
-import com.example.miniorm.meta.TableMeta;
-import com.example.miniorm.util.Names;
-import com.example.miniorm.util.LambdaUtils;
+import org.oldskooler.entity4j.functions.SFunction;
+import org.oldskooler.entity4j.mapping.TableMeta;
+import org.oldskooler.entity4j.util.Names;
+import org.oldskooler.entity4j.util.LambdaUtils;
 
 import java.util.*;
 import java.util.function.Function;

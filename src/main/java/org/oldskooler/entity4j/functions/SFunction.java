@@ -1,4 +1,4 @@
-package com.example.miniorm.functions;
+package org.oldskooler.entity4j.functions;
 
 import java.io.Serializable;
 

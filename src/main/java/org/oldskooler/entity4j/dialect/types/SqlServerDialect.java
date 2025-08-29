@@ -1,8 +1,8 @@
-package com.example.miniorm.dialect.types;
+package org.oldskooler.entity4j.dialect.types;
 
-import com.example.miniorm.annotations.Column;
-import com.example.miniorm.dialect.SqlDialect;
-import com.example.miniorm.meta.TableMeta;
+import org.oldskooler.entity4j.annotations.Column;
+import org.oldskooler.entity4j.dialect.SqlDialect;
+import org.oldskooler.entity4j.mapping.TableMeta;
 
 import java.lang.reflect.Field;
 import java.util.*;
@@ -50,7 +50,7 @@ public class SqlServerDialect implements SqlDialect {
     @Override
     public String resolveSqlType(Field f) {
         Class<?> t = f.getType();
-        com.example.miniorm.annotations.Column ann = f.getAnnotation(com.example.miniorm.annotations.Column.class);
+        Column ann = f.getAnnotation(Column.class);
         if (ann != null) {
             String user = SqlDialect.userTypeOrNull(ann.type());
             int precision = ann.precision();

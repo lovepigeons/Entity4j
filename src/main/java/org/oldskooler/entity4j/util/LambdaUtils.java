@@ -1,6 +1,6 @@
-package com.example.miniorm.util;
+package org.oldskooler.entity4j.util;
 
-import com.example.miniorm.functions.SFunction;
+import org.oldskooler.entity4j.functions.SFunction;
 
 import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.Method;

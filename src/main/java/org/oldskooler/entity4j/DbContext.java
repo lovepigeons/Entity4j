@@ -1,9 +1,8 @@
-package com.example.miniorm;
+package org.oldskooler.entity4j;
 
-import com.example.miniorm.IDbContext;
-import com.example.miniorm.dialect.SqlDialect;
-import com.example.miniorm.dialect.SqlDialectType;
-import com.example.miniorm.mapping.ModelBuilder;
+import org.oldskooler.entity4j.dialect.SqlDialect;
+import org.oldskooler.entity4j.dialect.SqlDialectType;
+import org.oldskooler.entity4j.mapping.ModelBuilder;
 
 import java.sql.Connection;
 import java.sql.SQLException;

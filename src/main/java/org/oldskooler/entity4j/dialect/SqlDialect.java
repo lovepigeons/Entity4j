@@ -1,6 +1,6 @@
-package com.example.miniorm.dialect;
+package org.oldskooler.entity4j.dialect;
 
-import com.example.miniorm.meta.TableMeta;
+import org.oldskooler.entity4j.mapping.TableMeta;
 
 import java.lang.reflect.Field;
 import java.util.Locale;
