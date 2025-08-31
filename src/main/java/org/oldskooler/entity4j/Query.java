@@ -2,10 +2,16 @@ package org.oldskooler.entity4j;
 
 import org.oldskooler.entity4j.functions.SFunction;
 import org.oldskooler.entity4j.mapping.TableMeta;
+import org.oldskooler.entity4j.select.SelectionPart;
+import org.oldskooler.entity4j.select.Selector;
 import org.oldskooler.entity4j.util.Names;
 import org.oldskooler.entity4j.util.LambdaUtils;
 
+import java.lang.reflect.Field;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -28,6 +34,9 @@ public class Query<T> {
     private String baseAlias = null; // optional alias for FROM base table
     private final List<JoinPart<?>> joins = new ArrayList<>();
     private final Map<Class<?>, AliasMeta<?>> aliases = new LinkedHashMap<>();
+
+     private boolean hasExplicitSelect = false;
+    private final List<SelectionPart> selectionParts = new ArrayList<>();
 
     Query(IDbContext ctx, TableMeta<T> meta) {
         this.ctx = ctx;
@@ -138,6 +147,15 @@ public class Query<T> {
         return xs.isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(xs.get(0));
     }
 
+    /** Select specific columns from the root and/or joined entities. */
+    public Query<T> select(Consumer<Selector> s) {
+        Selector sel = new Selector();
+        s.accept(sel);
+        this.selectionParts.addAll(sel.parts());
+        this.hasExplicitSelect = true;
+        return this;
+    }
+
     /* -------------------------------
        Internal SQL building
        ------------------------------- */
@@ -145,9 +163,13 @@ public class Query<T> {
     private String buildSelectSql() {
         StringBuilder sql = new StringBuilder("SELECT ");
 
+        /*
         // Only project base table columns to keep mapping simple/back-compat.
         if (baseAlias != null) sql.append(ctx.dialect().q(baseAlias)).append(".*");
         else sql.append("*");
+         */
+
+        sql.append(buildSelectClause());
 
         sql.append(" FROM ").append(ctx.dialect().q(meta.table));
         if (baseAlias != null) sql.append(' ').append(ctx.dialect().q(baseAlias));
@@ -173,6 +195,71 @@ public class Query<T> {
 
         // Pagination is dialect-specific; let dialect rewrite/append as needed.
         return ctx.dialect().paginate(sql.toString(), orderByClause, limit, offset);
+    }
+
+    private String buildSelectClause() {
+        if (!hasExplicitSelect) {
+            if (baseAlias != null)
+                return ctx.dialect().q(baseAlias) + ".*";
+            else
+                return "*";
+        }
+
+        List<String> columns = new ArrayList<>();
+        for (SelectionPart p : selectionParts) {
+            if (p.kind == SelectionPart.Kind.STAR) {
+                String alias = getAlias(p.entityType != null ? p.entityType : this.meta.type);
+                columns.add(alias + ".*");
+            } else {
+                Class<?> et = (p.entityType != null ? p.entityType : this.meta.type);
+                String tableAlias = getAlias(et);
+                String columnName = getMeta(et).propToColumn.get(p.propertyName);
+                String label = (p.alias != null && !p.alias.isEmpty()) ? (" AS " + p.alias) : "";
+                columns.add(tableAlias + "." + columnName + label);
+            }
+        }
+        return columns.stream().collect(Collectors.joining(", "));
+    }
+
+    /** Generic map projection (column label -> value). */
+    public List<Map<String,Object>> toMapList() {
+        String sql = buildSelectSql();
+        return ctx.executeQueryMap(sql, params);
+    }
+
+   /** DTO projection via setters matching column labels (use AS to control labels). */
+
+    public <R> List<R> toList(Class<R> dtoType) {
+        String sql = buildSelectSql();
+        List<Map<String, Object>> rs = ctx.executeQueryMap(sql, params);
+
+        List<R> result = new ArrayList<>();
+        for (Map<String, Object> row : rs) {
+            try {
+                // Create a new instance of the DTO
+                R dto = dtoType.getDeclaredConstructor().newInstance();
+
+                // Map each entry in the row to the corresponding field in the DTO
+                for (Map.Entry<String, Object> entry : row.entrySet()) {
+                    String column = entry.getKey();
+                    Object value = entry.getValue();
+
+                    try {
+                        Field field = dtoType.getDeclaredField(column);
+                        field.setAccessible(true); // allow private field access
+                        field.set(dto, IDbContext.convert(value, field.getType()));
+                    } catch (NoSuchFieldException e) {
+                        // If no matching field exists in the DTO, just ignore
+                    }
+                }
+
+                result.add(dto);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to map row to DTO", e);
+            }
+        }
+
+        return result;
     }
 
     private <J> Query<T> addJoin(Class<J> type, String alias, String kind, Function<On<T, J>, On<T, J>> onBuilder) {

@@ -7,7 +7,7 @@ import org.oldskooler.entity4j.mapping.ModelBuilder;
 import java.sql.Connection;
 import java.sql.SQLException;
 
-public abstract class DbContext extends IDbContext {
+public class DbContext extends IDbContext {
     public DbContext(Connection connection) throws SQLException {
         super(connection);
     }
@@ -20,5 +20,7 @@ public abstract class DbContext extends IDbContext {
         super(connection, dialect);
     }
 
-    public abstract void onModelCreating(ModelBuilder model);
+    public void onModelCreating(ModelBuilder model) {
+
+    }
 }

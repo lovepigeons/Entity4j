@@ -266,6 +266,31 @@ public abstract class IDbContext implements AutoCloseable {
         }
     }
 
+    List<Map<String, Object>> executeQueryMap(String sql, List<Object> params) {
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            bindParams(ps, params);
+            try (ResultSet rs = ps.executeQuery()) {
+                List<Map<String, Object>> out = new ArrayList<>();
+                ResultSetMetaData md = rs.getMetaData();
+                final int cols = md.getColumnCount();
+
+                while (rs.next()) {
+                    Map<String, Object> row = new LinkedHashMap<>(cols);
+                    for (int i = 1; i <= cols; i++) {
+                        String label = md.getColumnLabel(i); // respects SQL aliases
+                        // Object val = convert(rs.getObject(i), rs.getObject(1).getClass());
+                        Object val = rs.getObject(i);
+                        row.put(label, val);
+                    }
+                    out.add(row);
+                }
+                return out;
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("query failed", e);
+        }
+    }
+
     private static void bindParams(PreparedStatement ps, List<Object> params) throws SQLException {
         for (int i = 0; i < params.size(); i++) {
             Object v = params.get(i);
@@ -308,7 +333,7 @@ public abstract class IDbContext implements AutoCloseable {
         }
     }
 
-    private static Object convert(Object val, Class<?> targetType) {
+    public static Object convert(Object val, Class<?> targetType) {
         if (val == null) return null;
         if (targetType.isInstance(val)) return val;
         if (targetType == Long.class || targetType == long.class) return ((Number) val).longValue();
