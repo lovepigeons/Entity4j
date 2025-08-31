@@ -1,5 +1,10 @@
 package org.oldskooler.entity4j.mapping;
 
+import org.oldskooler.entity4j.annotations.Column;
+import org.oldskooler.entity4j.annotations.Entity;
+import org.oldskooler.entity4j.annotations.Id;
+import org.oldskooler.entity4j.annotations.NotMapped;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.*;
@@ -66,31 +71,14 @@ public final class TableMeta<T> {
      */
     @SuppressWarnings("unchecked")
     private static <T> TableMeta<T> tryAnnotations(Class<T> type) {
-        // We reference annotations by name to avoid hard compile deps if they’re absent.
-        // Expected FQCNs (adjust if yours differ):
-        //   com.example.miniorm.annotations.Entity
-        //   com.example.miniorm.annotations.Column
-        //   com.example.miniorm.annotations.Id
-        //   com.example.miniorm.annotations.NotMapped
-        Class<?> entityAnn = classOrNull("com.example.miniorm.annotations.Entity");
-        if (entityAnn == null) return null; // annotations not on classpath
+        // If @Entity is not present, bail out (use convention or registry instead).
+        Entity entity = type.getAnnotation(Entity.class);
+        if (entity == null) return null;
 
-        Object entity = type.getAnnotation((Class<java.lang.annotation.Annotation>) entityAnn);
-        if (entity == null) return null; // not annotated as @Entity
-
-        String tableName = null;
-        try {
-            // String table() default "";
-            tableName = (String) entityAnn.getMethod("table").invoke(entity);
-        } catch (ReflectiveOperationException ignore) {
-        }
+        String tableName = entity.table();
         if (tableName == null || tableName.isEmpty()) {
             tableName = defaultTableName(type);
         }
-
-        Class<?> columnAnn = classOrNull("com.example.miniorm.annotations.Column");
-        Class<?> idAnn = classOrNull("com.example.miniorm.annotations.Id");
-        Class<?> notMapped = classOrNull("com.example.miniorm.annotations.NotMapped");
 
         LinkedHashMap<String, Field> p2f = new LinkedHashMap<>();
         LinkedHashMap<String, String> p2c = new LinkedHashMap<>();
@@ -99,70 +87,52 @@ public final class TableMeta<T> {
         String idProp = null;
         String idCol = null;
         Field idF = null;
-        boolean idAuto = true; // default true like your second file
+        boolean idAuto = true; // your original default
 
         for (Field f : allInstanceFields(type)) {
             if (Modifier.isStatic(f.getModifiers())) continue;
 
-            // @NotMapped?
-            if (notMapped != null && f.getAnnotation((Class<java.lang.annotation.Annotation>) notMapped) != null) {
-                continue;
-            }
+            // Skip @NotMapped
+            if (f.getAnnotation(NotMapped.class) != null) continue;
 
             String prop = f.getName();
-            String col = defaultColumnName(prop);
 
-            // @Column(name="...")?
-            if (columnAnn != null) {
-                java.lang.annotation.Annotation cA = f.getAnnotation((Class<java.lang.annotation.Annotation>) columnAnn);
-                if (cA != null) {
-                    try {
-                        String name = (String) columnAnn.getMethod("name").invoke(cA);
-                        if (name != null && !name.isEmpty()) col = name;
-                    } catch (ReflectiveOperationException ignore) {
-                    }
-                }
+            // Determine final column name (Column.name, then Id.name, else default)
+            Column colAnn = f.getAnnotation(Column.class);
+            Id idAnn = f.getAnnotation(Id.class);
+
+            String col = defaultColumnName(prop);
+            if (colAnn != null && !colAnn.name().isEmpty()) col = colAnn.name();
+            if (idAnn != null && !idAnn.name().isEmpty())   col = idAnn.name();
+
+            // Gather column hints from @Column (nullable/type/precision/scale/length)
+            boolean nullable = true;
+            String typeOverride = "";
+            int precision = 0;
+            int scale = 0;
+            int length = -1;
+
+            if (colAnn != null) {
+                nullable     = colAnn.nullable();
+                typeOverride = colAnn.type();
+                precision    = colAnn.precision();
+                scale        = Math.max(0, colAnn.scale());
+                length       = colAnn.length();
             }
 
+            // If @Id is present, PK is non-nullable and we capture id settings
+            if (idAnn != null) {
+                idProp = prop;
+                idF = f;
+                idCol = col;
+                idAuto = idAnn.auto(); // matches your Id.java
+                nullable = false;      // PK non-nullable by default
+            }
+
+            // Build maps (note: columns keyed by *column name* to match dialect lookups)
             p2f.put(prop, f);
             p2c.put(prop, col);
-
-            // Default ColumnMeta: nullable true, no explicit type/precision/scale
-            ColumnMeta meta = new ColumnMeta(prop, col, true, "", 0, 0, -1);
-            cols.put(prop, meta);
-
-            // @Id?
-            if (idAnn != null) {
-                java.lang.annotation.Annotation iA = f.getAnnotation((Class<java.lang.annotation.Annotation>) idAnn);
-                if (iA != null) {
-                    idProp = prop;
-                    idF = f;
-
-                    // Allow @Id(name="...") override
-                    try {
-                        String name = (String) idAnn.getMethod("name").invoke(iA);
-                        if (name != null && !name.isEmpty()) {
-                            p2c.put(prop, name);
-                            col = name;
-                            // reflect in ColumnMeta
-                            cols.put(prop, new ColumnMeta(prop, col, false, "", 0, 0, -1));
-                        }
-                    } catch (ReflectiveOperationException ignore) {
-                    }
-
-                    // @Id(auto=...)
-                    try {
-                        Boolean auto = (Boolean) idAnn.getMethod("auto").invoke(iA);
-                        if (auto != null) idAuto = auto;
-                    } catch (ReflectiveOperationException ignore) {
-                    }
-
-                    idCol = col;
-
-                    // Primary key non-nullable by default
-                    cols.put(prop, new ColumnMeta(prop, col, false, "", 0, 0, -1));
-                }
-            }
+            cols.put(col, new ColumnMeta(prop, col, nullable, typeOverride, precision, scale, length));
         }
 
         return new TableMeta<>(type, tableName, idCol, idF, idAuto, p2c, p2f, cols);
