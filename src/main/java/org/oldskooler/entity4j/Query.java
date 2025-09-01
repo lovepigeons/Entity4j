@@ -1,7 +1,7 @@
 package org.oldskooler.entity4j;
 
-import org.oldskooler.entity4j.annotations.Column;
 import org.oldskooler.entity4j.functions.SFunction;
+import org.oldskooler.entity4j.mapping.SetBuilder;
 import org.oldskooler.entity4j.mapping.TableMeta;
 import org.oldskooler.entity4j.select.SelectionPart;
 import org.oldskooler.entity4j.select.Selector;
@@ -286,6 +286,93 @@ public class Query<T> {
 
         return result;
     }
+
+    public int update(Consumer<SetBuilder<T>> setter) {
+        if (setter == null) throw new IllegalArgumentException("setter is required");
+        if (where.length() == 0) throw new IllegalArgumentException("WHERE must not be empty for update()");
+
+        SetBuilder<T> s = new SetBuilder<>(this.ctx.dialect(), meta);
+        setter.accept(s);
+
+        if (s.sets().isEmpty()) throw new IllegalArgumentException("No columns in SET");
+
+        String sql = "UPDATE " + ctx.q(meta.table) +
+                " SET " + String.join(", ", s.sets()) +
+                " WHERE " + where;
+
+        // bind SET params first, then WHERE params (existing order)
+        List<Object> all = new ArrayList<>(s.params().size() + params.size());
+        all.addAll(s.params());
+        all.addAll(params);
+
+        try (PreparedStatement ps = ctx.conn().prepareStatement(sql)) {
+            JdbcParamBinder.bindParams(ps, all);
+            return ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("update failed: " + sql, e);
+        }
+    }
+
+
+    /** DELETE FROM {table} WHERE <built via filter(...)> */
+    public int delete() {
+        if (where.length() == 0) throw new IllegalArgumentException("WHERE must not be empty for delete()");
+
+        String sql = "DELETE FROM " + ctx.q(meta.table) + " WHERE " + where;
+
+        try (PreparedStatement ps = ctx.conn().prepareStatement(sql)) {
+            JdbcParamBinder.bindParams(ps, params);
+            return ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("delete failed: " + sql, e);
+        }
+    }
+
+    public String updateSql(Consumer<SetBuilder<T>> setter) {
+        if (setter == null) throw new IllegalArgumentException("setter is required");
+        if (where.length() == 0) throw new IllegalArgumentException("WHERE must not be empty for update()");
+
+        SetBuilder<T> s = new SetBuilder<>(this.ctx.dialect(), meta);
+        setter.accept(s);
+
+        if (s.sets().isEmpty()) throw new IllegalArgumentException("No columns in SET");
+
+        List<Object> all = new ArrayList<>(s.params().size() + params.size());
+        all.addAll(s.params());
+        all.addAll(params);
+
+        String sql = "UPDATE " + ctx.q(meta.table) +
+                " SET " + String.join(", ", s.sets()) +
+                " WHERE " + where;
+
+        if (all.isEmpty()) return sql;
+
+        StringBuilder out = new StringBuilder(sql);
+        out.append("\n[Params] ");
+        for (int i = 0; i < params.size(); i++) {
+            out.append('?').append(i + 1).append('=').append(params.get(i));
+            if (i < params.size() - 1) out.append(", ");
+        }
+        return out.toString();
+
+    }
+
+    public String deleteSql() {
+        if (where.length() == 0) throw new IllegalArgumentException("WHERE must not be empty for delete()");
+
+        String sql = "DELETE FROM " + ctx.q(meta.table) + " WHERE " + where;
+
+        if (params.isEmpty()) return sql;
+
+        StringBuilder out = new StringBuilder(sql);
+        out.append("\n[Params] ");
+        for (int i = 0; i < params.size(); i++) {
+            out.append('?').append(i + 1).append('=').append(params.get(i));
+            if (i < params.size() - 1) out.append(", ");
+        }
+        return out.toString();
+    }
+
 
     private <J> Query<T> addJoin(Class<J> type, String alias, String kind, Function<On<T, J>, On<T, J>> onBuilder) {
         TableMeta<J> jm = TableMeta.of(type, ctx.mappingRegistry());

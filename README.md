@@ -23,6 +23,9 @@ Entity4j is a minimal, type-safe object relational mapper for Java. It lets you 
     - [Selecting into Custom Types](#selecting-into-custom-types)
     - [Using toMapList()](#using-tomaplist)
 - [CRUD Operations](#crud-operations)
+    - [Basic CRUD](#basic-crud)
+    - [Filtered Single-Column Updates](#filtered-single-column-updates)
+    - [Filtered Deletes (Bulk/Conditional)](#filtered-deletes-bulkconditional)
 - [Debugging and SQL Output](#debugging-and-sql-output)
 - [Advanced Features](#advanced-features)
 - [License](#license)
@@ -45,7 +48,7 @@ Then add the dependency:
 
 ```groovy
 dependencies {
-    implementation 'com.github.lovepigeons:Entity4j:v1.0.4'
+    implementation 'com.github.lovepigeons:Entity4j:v1.0.5'
 }
 ```
 
@@ -69,7 +72,7 @@ Then add the dependency:
     <dependency>
         <groupId>com.github.lovepigeons</groupId>
         <artifactId>Entity4j</artifactId>
-        <version>v1.0.4</version>
+        <version>v1.0.5</version>
     </dependency>
 </dependencies>
 ```
@@ -303,7 +306,9 @@ public class UserSummaryDto {
 }
 ```
 
-Then select specific columns and map them to your DTO. If it does not map to the correct column, you can explicitly set which column to map by using fluent mapping on the entity, or using ``@Column(name='user_id')`` above the field.
+Then select specific columns and map them to your DTO. 
+
+If it does not map to the correct column, you can explicitly set which column to map by using [fluent mapping](#fluent-mappings) on the entity, or using ``@Column(name='user_id')`` above the field.
 
 ```java
 List<UserSummaryDto> summaries = ctx.from(User.class)
@@ -353,11 +358,47 @@ for (Map<String, Object> row : results) {
 
 ## CRUD Operations
 
+### Basic CRUD
+
 ```java
 ctx.insert(new User("Ada Lovelace", 36, true));
 ctx.update(existingUser);
 ctx.delete(existingUser);
 ```
+
+### Filtered Single-Column Updates
+
+You can update one or more specific columns in bulk by filtering a query and providing a column setter. This avoids loading entities into memory.
+
+```java
+ctx.from(User.class)
+   .filter(f -> f.equals(User::getStatus, "ACTIVE"))
+   .update(s -> s.set(User::getStatus, "temp"));
+```
+
+**Generated SQL (typical):**
+```sql
+UPDATE users SET status = ? WHERE status = ?
+```
+
+> Use the lambda to chain additional `set(...)` calls for multi-column updates if needed.
+
+### Filtered Deletes (Bulk/Conditional)
+
+Delete rows directly with a filter, without fetching entities:
+
+```java
+ctx.from(User.class)
+   .filter(f -> f.equals(User::getName, "temp"))
+   .delete();
+```
+
+**Generated SQL (typical):**
+```sql
+DELETE FROM users WHERE name = ?
+```
+
+> Combine multiple conditions with the [Filters API](#filters-api) for precise targeting.
 
 ## Debugging and SQL Output
 
@@ -503,4 +544,4 @@ ORDER BY u.name ASC, o.placed_at DESC
 
 ## License
 
-Entity4j is released under the GNU General Public License v3.0.
+Entity4j is released under the Apache 2.0 license.

@@ -142,15 +142,6 @@ public final class ModelBuilder {
         public ModelBuilder done() {
             Objects.requireNonNull(table, "table");
 
-            /*
-            if (idProp != null && idCol == null) idCol = idProp;
-            if (idProp != null) {
-                propToColumn.putIfAbsent(idProp, idCol);
-                columnMeta.putIfAbsent(idProp, new ColumnBuilder(idProp).name(idCol).nullable(false).toMeta());
-            }
-
-             */
-
             for (Map.Entry<String, PrimaryKey> key : this.keys.entrySet()) {
                 PrimaryKey data = key.getValue();
                 propToColumn.putIfAbsent(data.property, data.column);
