@@ -29,14 +29,30 @@ public final class SelectionPart {
 
     }
 
-
     public static SelectionPart star(Class<?> entityType) {
         return new SelectionPart(Kind.STAR, entityType, null, null);
 
     }
 
-
     public SelectionPart withAlias(String alias) {
         return new SelectionPart(kind, entityType, propertyName, alias);
     }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder("SelectionPart{");
+        sb.append("kind=").append(kind);
+        if (entityType != null) {
+            sb.append(", entityType=").append(entityType.getSimpleName());
+        }
+        if (propertyName != null) {
+            sb.append(", propertyName='").append(propertyName).append("'");
+        }
+        if (alias != null) {
+            sb.append(", alias='").append(alias).append("'");
+        }
+        sb.append('}');
+        return sb.toString();
+    }
+
 }

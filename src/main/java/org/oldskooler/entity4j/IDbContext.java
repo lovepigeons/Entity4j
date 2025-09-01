@@ -223,9 +223,6 @@ public abstract class IDbContext implements AutoCloseable {
             List<String> where = new ArrayList<>();
             for (String prop : pkProps) {
                 String col = m.propToColumn.get(prop);
-
-                System.out.println("Prop: " + prop + " / " + col);
-
                 where.add(dialect.q(col) + " = ?");
             }
 
@@ -238,8 +235,6 @@ public abstract class IDbContext implements AutoCloseable {
 
             String sql = "UPDATE " + dialect.q(m.table) + " SET " + String.join(", ", sets)
                     + " WHERE " + String.join(" AND ", where);
-
-            System.out.println("sql: " + sql);
 
             try (PreparedStatement ps = connection.prepareStatement(sql)) {
                 bindParams(ps, params);

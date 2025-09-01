@@ -23,8 +23,6 @@ public final class Selector {
     /**
      * Column from a joined entity via getter reference.
      */
-
-
     public <E, R> Selector col(Class<E> entity, SFunction<E, R> getter) {
         parts.add(SelectionPart.forGetter(entity, getter, null));
         return this;
@@ -34,8 +32,6 @@ public final class Selector {
     /**
      * Add e.* for the given entity (root or joined).
      */
-
-
     public <E> Selector all(Class<E> entity) {
         parts.add(SelectionPart.star(entity));
         return this;
@@ -51,10 +47,9 @@ public final class Selector {
         if (!parts.isEmpty()) {
             SelectionPart last = parts.get(parts.size() - 1);
             if (last.kind == SelectionPart.Kind.COLUMN) {
-                parts.set(parts.size() - 1, last.withAlias(alias));
-
+                last = last.withAlias(alias);
+                parts.set(parts.size() - 1, last);
             }
-
         }
         return this;
 

@@ -1,6 +1,8 @@
 package org.oldskooler.entity4j;
 
+import org.oldskooler.entity4j.annotations.Column;
 import org.oldskooler.entity4j.functions.SFunction;
+import org.oldskooler.entity4j.mapping.ColumnMeta;
 import org.oldskooler.entity4j.mapping.TableMeta;
 import org.oldskooler.entity4j.select.SelectionPart;
 import org.oldskooler.entity4j.select.Selector;
@@ -245,7 +247,16 @@ public class Query<T> {
                     Object value = entry.getValue();
 
                     try {
-                        Field field = dtoType.getDeclaredField(column);
+                        Field field = Arrays.stream(dtoType.getFields())
+                                .filter(x -> x.getAnnotation(Column.class) != null && x.getAnnotation(Column.class).name().equals(column))
+                                .findFirst()
+                                .orElse(null);
+
+                        if (field == null) {
+                            field = dtoType.getDeclaredField(column);
+                        }
+
+
                         field.setAccessible(true); // allow private field access
                         field.set(dto, IDbContext.convert(value, field.getType()));
                     } catch (NoSuchFieldException e) {
