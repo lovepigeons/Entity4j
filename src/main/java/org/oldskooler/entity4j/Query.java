@@ -37,7 +37,7 @@ public class Query<T> {
     private final List<JoinPart<?>> joins = new ArrayList<>();
     private final Map<Class<?>, AliasMeta<?>> aliases = new LinkedHashMap<>();
 
-     private boolean hasExplicitSelect = false;
+    private boolean hasExplicitSelect = false;
     private final List<SelectionPart> selectionParts = new ArrayList<>();
 
     Query(IDbContext ctx, TableMeta<T> meta) {
@@ -51,7 +51,9 @@ public class Query<T> {
        Public fluent API
        ------------------------------- */
 
-    /** Optional alias for the base table in FROM clause. */
+    /**
+     * Optional alias for the base table in FROM clause.
+     */
     public Query<T> as(String alias) {
         this.baseAlias = alias;
         aliases.put(meta.type, new AliasMeta<>(meta, alias));
@@ -64,67 +66,98 @@ public class Query<T> {
         return this;
     }
 
-    /** Backwards-compatible single-column ORDER BY on base table. */
+    /**
+     * Backwards-compatible single-column ORDER BY on base table.
+     */
     public Query<T> orderBy(SFunction<T, ?> getter, boolean asc) {
         orderBys.add(qualify(meta, getter, asc));
         return this;
     }
 
-    /** Add another ORDER BY on base table (same as calling orderBy again). */
+    /**
+     * Add another ORDER BY on base table (same as calling orderBy again).
+     */
     public Query<T> thenBy(SFunction<T, ?> getter, boolean asc) {
         return orderBy(getter, asc);
     }
 
-    /** ORDER BY using a getter from a joined type. */
+    /**
+     * ORDER BY using a getter from a joined type.
+     */
     public <J> Query<T> orderBy(Class<J> type, SFunction<J, ?> getter, boolean asc) {
         orderBys.add(qualify(getMeta(type), getter, asc));
         return this;
     }
 
-    /** Add another ORDER BY using a joined type. */
+    /**
+     * Add another ORDER BY using a joined type.
+     */
     public <J> Query<T> thenBy(Class<J> type, SFunction<J, ?> getter, boolean asc) {
         return orderBy(type, getter, asc);
     }
 
-    public Query<T> limit(Integer n) { this.limit = n; return this; }
-    public Query<T> offset(Integer n) { this.offset = n; return this; }
+    public Query<T> limit(Integer n) {
+        this.limit = n;
+        return this;
+    }
 
-    /** JOIN */
+    public Query<T> offset(Integer n) {
+        this.offset = n;
+        return this;
+    }
+
+    /**
+     * JOIN
+     */
     public <J> Query<T> join(Class<J> type, String alias, Function<On<T, J>, On<T, J>> on) {
         return addJoin(type, alias, "JOIN", on);
     }
 
-    /** LEFT OUTER JOIN */
+    /**
+     * LEFT OUTER JOIN
+     */
     public <J> Query<T> leftJoin(Class<J> type, String alias, Function<On<T, J>, On<T, J>> on) {
         return addJoin(type, alias, "LEFT JOIN", on);
     }
 
-    /** RIGHT OUTER JOIN */
+    /**
+     * RIGHT OUTER JOIN
+     */
     public <J> Query<T> rightJoin(Class<J> type, String alias, Function<On<T, J>, On<T, J>> on) {
         return addJoin(type, alias, "RIGHT JOIN", on);
     }
 
-    /** LEFT INNER JOIN */
+    /**
+     * LEFT INNER JOIN
+     */
     public <J> Query<T> leftInnerJoin(Class<J> type, String alias, Function<On<T, J>, On<T, J>> on) {
         return addJoin(type, alias, "LEFT INNER JOIN", on);
     }
 
-    /** RIGHT INNER JOIN */
+    /**
+     * RIGHT INNER JOIN
+     */
     public <J> Query<T> rightInnerJoin(Class<J> type, String alias, Function<On<T, J>, On<T, J>> on) {
         return addJoin(type, alias, "RIGHT INNER JOIN", on);
     }
 
-    /** OUTER JOIN */
+    /**
+     * OUTER JOIN
+     */
     public <J> Query<T> outerJoin(Class<J> type, String alias, Function<On<T, J>, On<T, J>> on) {
         return addJoin(type, alias, "OUTER JOIN", on);
     }
 
-    /** INNER JOIN */
+    /**
+     * INNER JOIN
+     */
     public <J> Query<T> innerJoin(Class<J> type, String alias, Function<On<T, J>, On<T, J>> on) {
         return addJoin(type, alias, "INNER JOIN", on);
     }
 
-    /** Returns the SELECT plus a second line showing numbered parameter bindings. */
+    /**
+     * Returns the SELECT plus a second line showing numbered parameter bindings.
+     */
     public String toSqlWithParams() {
         String sql = buildSelectSql();
         if (params.isEmpty()) return sql;
@@ -149,7 +182,9 @@ public class Query<T> {
         return xs.isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(xs.get(0));
     }
 
-    /** Select specific columns from the root and/or joined entities. */
+    /**
+     * Select specific columns from the root and/or joined entities.
+     */
     public Query<T> select(Consumer<Selector> s) {
         Selector sel = new Selector();
         s.accept(sel);
@@ -223,13 +258,17 @@ public class Query<T> {
         return columns.stream().collect(Collectors.joining(", "));
     }
 
-    /** Generic map projection (column label -> value). */
-    public List<Map<String,Object>> toMapList() {
+    /**
+     * Generic map projection (column label -> value).
+     */
+    public List<Map<String, Object>> toMapList() {
         String sql = buildSelectSql();
         return ctx.executeQueryMap(sql, params);
     }
 
-   /** DTO projection via setters matching column labels (use AS to control labels). */
+    /**
+     * DTO projection via setters matching column labels (use AS to control labels).
+     */
 
     public <R> List<R> toList(Class<R> dtoType) {
         String sql = buildSelectSql();
@@ -252,7 +291,7 @@ public class Query<T> {
                                 .filter(x -> x.getAnnotation(Column.class) != null && x.getAnnotation(Column.class).name().equals(column))
                                 .findFirst()
                                 .orElse(null);
-                        
+
                         if (field == null) {
                             field = dtoType.getDeclaredField(column);
                         }
@@ -313,7 +352,9 @@ public class Query<T> {
 
     /* ---- internal append helpers used by Filters ---- */
 
-    /** columnExpr should already be qualified/quoted if needed. */
+    /**
+     * columnExpr should already be qualified/quoted if needed.
+     */
     void appendCondition(String columnExpr, String op, Object value) {
         autoAndIfNeeded();
         where.append(columnExpr).append(' ').append(op).append(' ');
@@ -330,9 +371,15 @@ public class Query<T> {
                 params.addAll(vals);
             }
         } else if (value == null) {
-            if ("=".equals(op)) { where.setLength(where.length() - 2); where.append("IS NULL"); }
-            else if ("<>".equals(op)) { where.setLength(where.length() - 2); where.append("IS NOT NULL"); }
-            else { where.append("NULL"); }
+            if ("=".equals(op)) {
+                where.setLength(where.length() - 2);
+                where.append("IS NULL");
+            } else if ("<>".equals(op)) {
+                where.setLength(where.length() - 2);
+                where.append("IS NOT NULL");
+            } else {
+                where.append("NULL");
+            }
         } else {
             where.append('?');
             params.add(value);
@@ -353,7 +400,11 @@ public class Query<T> {
     public static class Filters<T> {
         private final Query<T> q;
         private final TableMeta<T> meta;
-        Filters(Query<T> q, TableMeta<T> meta) { this.q = q; this.meta = meta; }
+
+        Filters(Query<T> q, TableMeta<T> meta) {
+            this.q = q;
+            this.meta = meta;
+        }
 
         private String baseCol(SFunction<T, ?> getter) {
             String prop = LambdaUtils.propertyName(getter);
@@ -363,23 +414,75 @@ public class Query<T> {
         }
 
         // Base-table filters (backwards-compatible)
-        public Filters<T> equals(SFunction<T, ?> getter, Object value) { q.appendCondition(baseCol(getter), "=", value); return this; }
-        public Filters<T> notEquals(SFunction<T, ?> getter, Object value) { q.appendCondition(baseCol(getter), "<>", value); return this; }
-        public Filters<T> greater(SFunction<T, ?> getter, Object value) { q.appendCondition(baseCol(getter), ">", value); return this; }
-        public Filters<T> greaterOrEquals(SFunction<T, ?> getter, Object value) { q.appendCondition(baseCol(getter), ">=", value); return this; }
-        public Filters<T> less(SFunction<T, ?> getter, Object value) { q.appendCondition(baseCol(getter), "<", value); return this; }
-        public Filters<T> lessOrEquals(SFunction<T, ?> getter, Object value) { q.appendCondition(baseCol(getter), "<=", value); return this; }
-        public Filters<T> like(SFunction<T, ?> getter, String pattern) { q.appendCondition(baseCol(getter), "LIKE", pattern); return this; }
-        public Filters<T> in(SFunction<T, ?> getter, java.util.Collection<?> values) { q.appendCondition(baseCol(getter), "IN", new java.util.ArrayList<>(values)); return this; }
+        public Filters<T> equals(SFunction<T, ?> getter, Object value) {
+            q.appendCondition(baseCol(getter), "=", value);
+            return this;
+        }
+
+        public Filters<T> notEquals(SFunction<T, ?> getter, Object value) {
+            q.appendCondition(baseCol(getter), "<>", value);
+            return this;
+        }
+
+        public Filters<T> greater(SFunction<T, ?> getter, Object value) {
+            q.appendCondition(baseCol(getter), ">", value);
+            return this;
+        }
+
+        public Filters<T> greaterOrEquals(SFunction<T, ?> getter, Object value) {
+            q.appendCondition(baseCol(getter), ">=", value);
+            return this;
+        }
+
+        public Filters<T> less(SFunction<T, ?> getter, Object value) {
+            q.appendCondition(baseCol(getter), "<", value);
+            return this;
+        }
+
+        public Filters<T> lessOrEquals(SFunction<T, ?> getter, Object value) {
+            q.appendCondition(baseCol(getter), "<=", value);
+            return this;
+        }
+
+        public Filters<T> like(SFunction<T, ?> getter, String pattern) {
+            q.appendCondition(baseCol(getter), "LIKE", pattern);
+            return this;
+        }
+
+        public Filters<T> in(SFunction<T, ?> getter, java.util.Collection<?> values) {
+            q.appendCondition(baseCol(getter), "IN", new java.util.ArrayList<>(values));
+            return this;
+        }
 
         // Typed filters for joined tables
-        public <J> Filters<T> equals(Class<J> type, SFunction<J, ?> getter, Object value) { return op(type, getter, "=", value); }
-        public <J> Filters<T> notEquals(Class<J> type, SFunction<J, ?> getter, Object value) { return op(type, getter, "<>", value); }
-        public <J> Filters<T> greater(Class<J> type, SFunction<J, ?> getter, Object value) { return op(type, getter, ">", value); }
-        public <J> Filters<T> greaterOrEquals(Class<J> type, SFunction<J, ?> getter, Object value) { return op(type, getter, ">=", value); }
-        public <J> Filters<T> less(Class<J> type, SFunction<J, ?> getter, Object value) { return op(type, getter, "<", value); }
-        public <J> Filters<T> lessOrEquals(Class<J> type, SFunction<J, ?> getter, Object value) { return op(type, getter, "<=", value); }
-        public <J> Filters<T> like(Class<J> type, SFunction<J, ?> getter, String pattern) { return op(type, getter, "LIKE", pattern); }
+        public <J> Filters<T> equals(Class<J> type, SFunction<J, ?> getter, Object value) {
+            return op(type, getter, "=", value);
+        }
+
+        public <J> Filters<T> notEquals(Class<J> type, SFunction<J, ?> getter, Object value) {
+            return op(type, getter, "<>", value);
+        }
+
+        public <J> Filters<T> greater(Class<J> type, SFunction<J, ?> getter, Object value) {
+            return op(type, getter, ">", value);
+        }
+
+        public <J> Filters<T> greaterOrEquals(Class<J> type, SFunction<J, ?> getter, Object value) {
+            return op(type, getter, ">=", value);
+        }
+
+        public <J> Filters<T> less(Class<J> type, SFunction<J, ?> getter, Object value) {
+            return op(type, getter, "<", value);
+        }
+
+        public <J> Filters<T> lessOrEquals(Class<J> type, SFunction<J, ?> getter, Object value) {
+            return op(type, getter, "<=", value);
+        }
+
+        public <J> Filters<T> like(Class<J> type, SFunction<J, ?> getter, String pattern) {
+            return op(type, getter, "LIKE", pattern);
+        }
+
         public <J> Filters<T> in(Class<J> type, SFunction<J, ?> getter, java.util.Collection<?> values) {
             String prop = LambdaUtils.propertyName(getter);
             TableMeta<J> m = q.getMeta(type);
@@ -400,12 +503,29 @@ public class Query<T> {
             return this;
         }
 
-        public Filters<T> and() { q.where.append(" AND "); return this; }
-        public Filters<T> or() { q.where.append(" OR "); return this; }
-        public Filters<T> open() { q.where.append('('); return this; }
-        public Filters<T> close() { q.where.append(')'); return this; }
+        public Filters<T> and() {
+            q.where.append(" AND ");
+            return this;
+        }
 
-        public Query<T> done() { return q; }
+        public Filters<T> or() {
+            q.where.append(" OR ");
+            return this;
+        }
+
+        public Filters<T> open() {
+            q.where.append('(');
+            return this;
+        }
+
+        public Filters<T> close() {
+            q.where.append(')');
+            return this;
+        }
+
+        public Query<T> done() {
+            return q;
+        }
     }
 
     /* -------------------------------
@@ -420,21 +540,56 @@ public class Query<T> {
         private final StringBuilder on = new StringBuilder();
 
         On(Query<A> q, TableMeta<A> a, TableMeta<B> b, String bAlias) {
-            this.q = q; this.a = a; this.b = b; this.bAlias = bAlias;
+            this.q = q;
+            this.a = a;
+            this.b = b;
+            this.bAlias = bAlias;
         }
 
-        public On<A, B> eq(SFunction<A, ?> left, SFunction<B, ?> right) { return bin(left, "=", right); }
-        public On<A, B> ne(SFunction<A, ?> left, SFunction<B, ?> right) { return bin(left, "<>", right); }
-        public On<A, B> gt(SFunction<A, ?> left, SFunction<B, ?> right) { return bin(left, ">", right); }
-        public On<A, B> lt(SFunction<A, ?> left, SFunction<B, ?> right) { return bin(left, "<", right); }
-        public On<A, B> ge(SFunction<A, ?> left, SFunction<B, ?> right) { return bin(left, ">=", right); }
-        public On<A, B> le(SFunction<A, ?> left, SFunction<B, ?> right) { return bin(left, "<=", right); }
+        public On<A, B> eq(SFunction<A, ?> left, SFunction<B, ?> right) {
+            return bin(left, "=", right);
+        }
+
+        public On<A, B> ne(SFunction<A, ?> left, SFunction<B, ?> right) {
+            return bin(left, "<>", right);
+        }
+
+        public On<A, B> gt(SFunction<A, ?> left, SFunction<B, ?> right) {
+            return bin(left, ">", right);
+        }
+
+        public On<A, B> lt(SFunction<A, ?> left, SFunction<B, ?> right) {
+            return bin(left, "<", right);
+        }
+
+        public On<A, B> ge(SFunction<A, ?> left, SFunction<B, ?> right) {
+            return bin(left, ">=", right);
+        }
+
+        public On<A, B> le(SFunction<A, ?> left, SFunction<B, ?> right) {
+            return bin(left, "<=", right);
+        }
 
         // Allow chaining multiple predicates with AND/OR
-        public On<A, B> and() { on.append(" AND "); return this; }
-        public On<A, B> or() { on.append(" OR "); return this; }
-        public On<A, B> open() { on.append('('); return this; }
-        public On<A, B> close() { on.append(')'); return this; }
+        public On<A, B> and() {
+            on.append(" AND ");
+            return this;
+        }
+
+        public On<A, B> or() {
+            on.append(" OR ");
+            return this;
+        }
+
+        public On<A, B> open() {
+            on.append('(');
+            return this;
+        }
+
+        public On<A, B> close() {
+            on.append(')');
+            return this;
+        }
 
         private On<A, B> bin(SFunction<A, ?> l, String op, SFunction<B, ?> r) {
             if (needsAnd(on)) on.append(" AND ");
@@ -457,7 +612,9 @@ public class Query<T> {
             return qa + q.ctx.dialect().q(col);
         }
 
-        String toSql() { return on.toString(); }
+        String toSql() {
+            return on.toString();
+        }
     }
 
     /* -------------------------------
@@ -469,14 +626,22 @@ public class Query<T> {
         final String alias;
         final String kind;
         final String onSql;
+
         JoinPart(TableMeta<J> meta, String alias, String kind, String onSql) {
-            this.meta = meta; this.alias = alias; this.kind = kind; this.onSql = onSql;
+            this.meta = meta;
+            this.alias = alias;
+            this.kind = kind;
+            this.onSql = onSql;
         }
     }
 
     private static final class AliasMeta<X> {
         final TableMeta<X> meta;
         final String alias;
-        AliasMeta(TableMeta<X> meta, String alias) { this.meta = meta; this.alias = alias; }
+
+        AliasMeta(TableMeta<X> meta, String alias) {
+            this.meta = meta;
+            this.alias = alias;
+        }
     }
 }
