@@ -6,10 +6,10 @@ import org.oldskooler.entity4j.mapping.MappingRegistry;
 import org.oldskooler.entity4j.mapping.ModelBuilder;
 import org.oldskooler.entity4j.mapping.TableMeta;
 import org.oldskooler.entity4j.mapping.PrimaryKey;
+import org.oldskooler.entity4j.util.*;
 
 import java.lang.reflect.Field;
 import java.sql.*;
-import java.sql.Date;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -45,24 +45,7 @@ public abstract class IDbContext implements AutoCloseable {
      */
     public IDbContext(Connection connection) throws SQLException {
         this.connection = Objects.requireNonNull(connection, "connection");
-        this.dialect = detectDialect(connection);
-    }
-
-    private static SqlDialect detectDialect(Connection c) throws SQLException {
-        DatabaseMetaData md = c.getMetaData();
-        String url = (md.getURL() == null ? "" : md.getURL()).toLowerCase(Locale.ROOT);
-        String product = (md.getDatabaseProductName() == null ? "" : md.getDatabaseProductName()).toLowerCase(Locale.ROOT);
-
-        if (url.startsWith("jdbc:mysql:") || product.contains("mysql") || product.contains("mariadb"))
-            return SqlDialectType.MYSQL.createDialect();
-        if (url.startsWith("jdbc:postgresql:") || product.contains("postgres"))
-            return SqlDialectType.POSTGRESQL.createDialect();
-        if (url.startsWith("jdbc:sqlserver:") || product.contains("microsoft sql server"))
-            return SqlDialectType.SQLSERVER.createDialect();
-        if (url.startsWith("jdbc:sqlite:") || product.contains("sqlite"))
-            return SqlDialectType.SQLITE.createDialect();
-
-        throw new IllegalArgumentException("Could not automatically detect sql dialect, please explicitly declare it with: new DbContext(Connection connection, SqlDialectType dialectType)");
+        this.dialect = DialectDetector.detectDialect(connection);
     }
 
     public abstract void onModelCreating(ModelBuilder model);
@@ -146,10 +129,10 @@ public abstract class IDbContext implements AutoCloseable {
         Class<T> type = (Class<T>) entity.getClass();
         TableMeta<T> m = TableMeta.of(type, mappingRegistry);
         try {
-            Map<String, Object> values = extractValues(entity, m);
+            Map<String, Object> values = ReflectionUtils.extractValues(entity, m);
 
             // Build insert column list excluding auto PK properties
-            Set<String> autoPkProps = getAutoPkProps(m);
+            Set<String> autoPkProps = PrimaryKeyUtils.getAutoPkProps(m);
             List<String> cols = new ArrayList<>();
             List<Object> params = new ArrayList<>();
             for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
@@ -162,15 +145,15 @@ public abstract class IDbContext implements AutoCloseable {
             String sql = dialect.buildInsertSql(m, cols);
 
             // If the dialect uses "RETURNING id" and we have exactly one auto PK
-            Optional<Map.Entry<String, PrimaryKey>> singleAuto = getSingleAutoPk(m);
+            Optional<Map.Entry<String, PrimaryKey>> singleAuto = PrimaryKeyUtils.getSingleAutoPk(m);
             if (dialect.useInsertReturning() && singleAuto.isPresent()) {
                 Field idField = m.propToField.get(singleAuto.get().getValue().property); // singleAuto.get().getValue().field();
                 try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                    bindParams(ps, params);
+                    JdbcParamBinder.bindParams(ps, params);
                     try (ResultSet rs = ps.executeQuery()) {
                         if (rs.next()) {
                             Object id = rs.getObject(1);
-                            setField(entity, idField, id);
+                            ReflectionUtils.setField(entity, idField, id);
                             return 1;
                         }
                         return 0;
@@ -179,15 +162,15 @@ public abstract class IDbContext implements AutoCloseable {
             }
 
             try (PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-                bindParams(ps, params);
+                JdbcParamBinder.bindParams(ps, params);
                 int n = ps.executeUpdate();
-                Optional<Map.Entry<String, PrimaryKey>> singleAutoGk = getSingleAutoPk(m);
+                Optional<Map.Entry<String, PrimaryKey>> singleAutoGk = PrimaryKeyUtils.getSingleAutoPk(m);
                 if (singleAutoGk.isPresent()) {
                     Field idField = m.propToField.get(singleAutoGk.get().getValue().property); // singleAutoGk.get().getValue().field();
                     try (ResultSet rs = ps.getGeneratedKeys()) {
                         if (rs.next()) {
                             Object id = rs.getObject(1);
-                            setField(entity, idField, id);
+                            ReflectionUtils.setField(entity, idField, id);
                         }
                     }
                 }
@@ -206,7 +189,7 @@ public abstract class IDbContext implements AutoCloseable {
         if (m.keys == null || m.keys.isEmpty()) throw new IllegalStateException("@Id required for update");
 
         try {
-            Map<String, Object> values = extractValues(entity, m);
+            Map<String, Object> values = ReflectionUtils.extractValues(entity, m);
 
             // SETs exclude all PK props
             Set<String> pkProps = m.keys.keySet();
@@ -237,7 +220,7 @@ public abstract class IDbContext implements AutoCloseable {
                     + " WHERE " + String.join(" AND ", where);
 
             try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                bindParams(ps, params);
+                JdbcParamBinder.bindParams(ps, params);
                 return ps.executeUpdate();
             }
         } catch (SQLException e) {
@@ -252,7 +235,7 @@ public abstract class IDbContext implements AutoCloseable {
         TableMeta<T> m = TableMeta.of(t, mappingRegistry);
         if (m.keys == null || m.keys.isEmpty()) throw new IllegalStateException("@Id required for delete");
         try {
-            Map<String, Object> values = extractValues(entity, m);
+            Map<String, Object> values = ReflectionUtils.extractValues(entity, m);
 
             List<String> where = new ArrayList<>();
             List<Object> params = new ArrayList<>();
@@ -266,7 +249,7 @@ public abstract class IDbContext implements AutoCloseable {
 
             String sql = "DELETE FROM " + dialect.q(m.table) + " WHERE " + String.join(" AND ", where);
             try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                bindParams(ps, params);
+                JdbcParamBinder.bindParams(ps, params);
                 return ps.executeUpdate();
             }
         } catch (SQLException e) {
@@ -286,11 +269,9 @@ public abstract class IDbContext implements AutoCloseable {
     /* ---- helpers ---- */
     <T> List<T> executeQuery(TableMeta<T> m, String sql, List<Object> params) {
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            bindParams(ps, params);
+            JdbcParamBinder.bindParams(ps, params);
             try (ResultSet rs = ps.executeQuery()) {
-                List<T> out = new ArrayList<>();
-                while (rs.next()) out.add(mapRow(rs, m));
-                return out;
+                return RowMapper.mapAll(rs, m);
             }
         } catch (SQLException e) {
             throw new RuntimeException("query failed", e);
@@ -299,109 +280,12 @@ public abstract class IDbContext implements AutoCloseable {
 
     List<Map<String, Object>> executeQueryMap(String sql, List<Object> params) {
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            bindParams(ps, params);
+            JdbcParamBinder.bindParams(ps, params);
             try (ResultSet rs = ps.executeQuery()) {
-                List<Map<String, Object>> out = new ArrayList<>();
-                ResultSetMetaData md = rs.getMetaData();
-                final int cols = md.getColumnCount();
-
-                while (rs.next()) {
-                    Map<String, Object> row = new LinkedHashMap<>(cols);
-                    for (int i = 1; i <= cols; i++) {
-                        String label = md.getColumnLabel(i); // respects SQL aliases
-                        Object val = rs.getObject(i);
-                        row.put(label, val);
-                    }
-                    out.add(row);
-                }
-                return out;
+                return RowMapper.toMapList(rs);
             }
         } catch (SQLException e) {
             throw new RuntimeException("query failed", e);
-        }
-    }
-
-    private static void bindParams(PreparedStatement ps, List<Object> params) throws SQLException {
-        for (int i = 0; i < params.size(); i++) {
-            Object v = params.get(i);
-            if (v instanceof LocalDate) {
-                LocalDate ld = (LocalDate) v;
-                ps.setDate(i + 1, Date.valueOf(ld));
-            } else if (v instanceof LocalDateTime) {
-                LocalDateTime ldt = (LocalDateTime) v;
-                ps.setTimestamp(i + 1, Timestamp.valueOf(ldt));
-            } else if (v instanceof Instant) {
-                Instant inst = (Instant) v;
-                ps.setTimestamp(i + 1, Timestamp.from(inst));
-            } else {
-                ps.setObject(i + 1, v);
-            }
-        }
-    }
-
-    private static <T> Map<String, Object> extractValues(T entity, TableMeta<T> m) {
-        Map<String, Object> values = new LinkedHashMap<>();
-        m.propToField.forEach((prop, f) -> values.put(prop, getField(entity, f)));
-        return values;
-    }
-
-    private static Object getField(Object target, Field f) {
-        try {
-            f.setAccessible(true);
-            return f.get(target);
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private static void setField(Object target, Field f, Object val) {
-        try {
-            f.setAccessible(true);
-            f.set(target, convert(val, f.getType()));
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public static Object convert(Object val, Class<?> targetType) {
-        if (val == null) return null;
-        if (targetType.isInstance(val)) return val;
-        if (targetType == Long.class || targetType == long.class) return ((Number) val).longValue();
-        if (targetType == Integer.class || targetType == int.class) return ((Number) val).intValue();
-        if (targetType == Double.class || targetType == double.class) return ((Number) val).doubleValue();
-        if (targetType == Float.class || targetType == float.class) return ((Number) val).floatValue();
-        if (targetType == Short.class || targetType == short.class) return ((Number) val).shortValue();
-        if (targetType == Byte.class || targetType == byte.class) return ((Number) val).byteValue();
-        if (targetType == Boolean.class || targetType == boolean.class) {
-            if (val instanceof Number) return ((Number) val).intValue() != 0;
-            if (val instanceof String) return Boolean.parseBoolean((String) val);
-        }
-        if (targetType == String.class) return String.valueOf(val);
-        if (targetType.getName().equals("java.util.UUID")) return java.util.UUID.fromString(String.valueOf(val));
-        if (targetType == LocalDate.class && val instanceof java.sql.Date) return ((Date) val).toLocalDate();
-        if (targetType == LocalDateTime.class && val instanceof java.sql.Timestamp)
-            return ((Timestamp) val).toLocalDateTime();
-        return val;
-    }
-
-    private <T> T mapRow(ResultSet rs, TableMeta<T> m) throws SQLException {
-        try {
-            T inst = m.type.getDeclaredConstructor().newInstance();
-            for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
-                String prop = e.getKey();
-                String col = e.getValue();
-                Object dbVal;
-                try {
-                    dbVal = rs.getObject(col);
-                } catch (SQLException ex) {
-                    continue;
-                }
-                Field f = m.propToField.get(prop);
-                setField(inst, f, dbVal);
-            }
-            return inst;
-        } catch (ReflectiveOperationException e) {
-            throw new RuntimeException(e);
         }
     }
 
@@ -417,7 +301,7 @@ public abstract class IDbContext implements AutoCloseable {
 
         try {
             // Column order (excluding auto PK props)
-            Set<String> autoPkProps = getAutoPkProps(m);
+            Set<String> autoPkProps = PrimaryKeyUtils.getAutoPkProps(m);
             List<String> cols = new ArrayList<>();
             for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
                 if (autoPkProps.contains(e.getKey())) continue;
@@ -436,23 +320,23 @@ public abstract class IDbContext implements AutoCloseable {
                 for (int i = 0; i < maxRowsPerStmt && it.hasNext(); i++) chunk.add(it.next());
 
                 // Build single SQL: INSERT INTO t (c1,c2) VALUES (?,?),(?,?)...
-                String sql = buildMultiRowInsertSql(m, cols, chunk.size());
+                String sql = BatchSqlUtils.buildMultiRowInsertSql(dialect, m, cols, chunk.size());
 
                 // If dialect supports RETURNING and we have exactly one auto PK, keep it
-                Optional<Map.Entry<String, PrimaryKey>> singleAuto = getSingleAutoPk(m);
+                Optional<Map.Entry<String, PrimaryKey>> singleAuto = PrimaryKeyUtils.getSingleAutoPk(m);
                 boolean wantsReturningIds = dialect.useInsertReturning() && singleAuto.isPresent();
                 if (wantsReturningIds) {
                     Field idField = m.propToField.get(singleAuto.get().getValue().property);
                     try (PreparedStatement ps = connection.prepareStatement(sql)) {
                         List<Object> params = new ArrayList<>(paramsPerRow * chunk.size());
-                        for (T e : chunk) collectInsertParams(e, m, cols, params);
-                        bindParams(ps, params);
+                        for (T e : chunk) BatchSqlUtils.collectInsertParams(e, m, cols, params);
+                        JdbcParamBinder.bindParams(ps, params);
                         try (ResultSet rs = ps.executeQuery()) {
                             int n = 0;
                             for (T e : chunk) {
                                 if (!rs.next()) break;
                                 Object id = rs.getObject(1);
-                                setField(e, idField, id);
+                                ReflectionUtils.setField(e, idField, id);
                                 n++;
                             }
                             total += n;
@@ -462,19 +346,19 @@ public abstract class IDbContext implements AutoCloseable {
                     // Use generated keys (only assign back if exactly one auto PK)
                     try (PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
                         List<Object> params = new ArrayList<>(paramsPerRow * chunk.size());
-                        for (T e : chunk) collectInsertParams(e, m, cols, params);
-                        bindParams(ps, params);
+                        for (T e : chunk) BatchSqlUtils.collectInsertParams(e, m, cols, params);
+                        JdbcParamBinder.bindParams(ps, params);
                         int n = ps.executeUpdate();
                         total += n;
 
-                        Optional<Map.Entry<String, PrimaryKey>> singleAutoGk = getSingleAutoPk(m);
+                        Optional<Map.Entry<String, PrimaryKey>> singleAutoGk = PrimaryKeyUtils.getSingleAutoPk(m);
                         if (singleAutoGk.isPresent()) {
                             Field idField = m.propToField.get(singleAutoGk.get().getValue().property); // singleAutoGk.get().getValue().field();
                             try (ResultSet rs = ps.getGeneratedKeys()) {
                                 for (T e : chunk) {
                                     if (!rs.next()) break;
                                     Object id = rs.getObject(1);
-                                    setField(e, idField, id);
+                                    ReflectionUtils.setField(e, idField, id);
                                 }
                             }
                         }
@@ -521,7 +405,7 @@ public abstract class IDbContext implements AutoCloseable {
                     int batched = 0;
                     while (batched < maxRowsPerStmt && it.hasNext()) {
                         T e = it.next();
-                        Map<String, Object> values = extractValues(e, m);
+                        Map<String, Object> values = ReflectionUtils.extractValues(e, m);
 
                         List<Object> params = new ArrayList<>(paramsPerRow);
                         for (Map.Entry<String, String> col : m.propToColumn.entrySet()) {
@@ -535,12 +419,12 @@ public abstract class IDbContext implements AutoCloseable {
                             params.add(idVal);
                         }
 
-                        bindParams(ps, params);
+                        JdbcParamBinder.bindParams(ps, params);
                         ps.addBatch();
                         batched++;
                     }
                     int[] counts = ps.executeBatch();
-                    total += sum(counts);
+                    total += BatchSqlUtils.sum(counts);
                 }
             }
             return total;
@@ -572,7 +456,7 @@ public abstract class IDbContext implements AutoCloseable {
                     List<Object> ids = new ArrayList<>(Math.min(maxIdsPerStmt, entities.size()));
                     while (ids.size() < maxIdsPerStmt && it.hasNext()) {
                         T e = it.next();
-                        Object idVal = extractValues(e, m).get(prop);
+                        Object idVal = ReflectionUtils.extractValues(e, m).get(prop);
                         if (idVal == null) throw new IllegalArgumentException("Entity primary key '" + prop + "' is null");
                         ids.add(idVal);
                     }
@@ -593,7 +477,7 @@ public abstract class IDbContext implements AutoCloseable {
             int paramsPerRow = pkArity;
             int maxGroupsPerStmt = Math.max(1, MAX_PARAMS_PER_STATEMENT / paramsPerRow);
 
-            String group = "(" + String.join(" AND ", buildPkEqualsList(m, pkPropsList)) + ")";
+            String group = "(" + String.join(" AND ", BatchSqlUtils.buildPkEqualsList(dialect, m, pkPropsList)) + ")";
             String base = "DELETE FROM " + dialect.q(m.table) + " WHERE ";
 
             int total = 0;
@@ -606,14 +490,14 @@ public abstract class IDbContext implements AutoCloseable {
                 try (PreparedStatement ps = connection.prepareStatement(sql)) {
                     List<Object> params = new ArrayList<>(chunk.size() * pkArity);
                     for (T e : chunk) {
-                        Map<String, Object> vals = extractValues(e, m);
+                        Map<String, Object> vals = ReflectionUtils.extractValues(e, m);
                         for (String prop : pkPropsList) {
                             Object v = vals.get(prop);
                             if (v == null) throw new IllegalArgumentException("Entity primary key '" + prop + "' is null");
                             params.add(v);
                         }
                     }
-                    bindParams(ps, params);
+                    JdbcParamBinder.bindParams(ps, params);
                     total += ps.executeUpdate();
                 }
             }
@@ -621,78 +505,6 @@ public abstract class IDbContext implements AutoCloseable {
         } catch (SQLException ex) {
             throw new RuntimeException("deleteAll failed", ex);
         }
-    }
-
-    /* ---------------------------
-       Private helpers for batch
-       --------------------------- */
-
-    private static int sum(int[] a) {
-        int s = 0;
-        for (int v : a) s += v;
-        return s;
-    }
-
-    private <T> String buildMultiRowInsertSql(TableMeta<T> m, List<String> cols, int rows) {
-        String colList = String.join(", ", cols.stream().map(dialect::q).toArray(String[]::new));
-        String rowPlaceholders = "(" + String.join(", ", Collections.nCopies(cols.size(), "?")) + ")";
-        String values = String.join(", ", Collections.nCopies(rows, rowPlaceholders));
-        String sql = "INSERT INTO " + dialect.q(m.table) + " (" + colList + ") VALUES " + values;
-
-        // Only add RETURNING if exactly one auto PK
-        if (dialect.useInsertReturning() && getSingleAutoPk(m).isPresent()) {
-            sql = sql + " " + dialect.insertReturningSuffix(m);
-        }
-        return sql;
-    }
-
-    private <T> void collectInsertParams(T entity, TableMeta<T> m, List<String> cols, List<Object> out) {
-        Map<String, Object> vals = extractValues(entity, m);
-        // cols are actual column names; map back to property by reverse lookup
-        for (String col : cols) {
-            String prop = findPropByColumn(m, col);
-            out.add(vals.get(prop));
-        }
-    }
-
-    private <T> String findPropByColumn(TableMeta<T> m, String colName) {
-        // colName is unquoted; m.propToColumn values are unquoted; direct match
-        for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
-            if (e.getValue().equals(colName)) return e.getKey();
-        }
-        throw new IllegalStateException("Column not found in meta: " + colName);
-    }
-
-    private <T> List<String> buildPkEqualsList(TableMeta<T> m, List<String> pkProps) {
-        List<String> parts = new ArrayList<>(pkProps.size());
-        for (String prop : pkProps) {
-            parts.add(dialect.q(m.propToColumn.get(prop)) + " = ?");
-        }
-        return parts;
-    }
-
-    /**
-     * PK helpers for new TableMeta.keys model
-     */
-    private static <T> Optional<Map.Entry<String, PrimaryKey>> getSingleAutoPk(TableMeta<T> m) {
-        if (m.keys == null || m.keys.isEmpty()) return Optional.empty();
-        Map.Entry<String, PrimaryKey> match = null;
-        for (Map.Entry<String, PrimaryKey> e : m.keys.entrySet()) {
-            if (e.getValue() != null && e.getValue().auto()) {
-                if (match != null) return Optional.empty(); // more than one auto
-                match = e;
-            }
-        }
-        return Optional.ofNullable(match);
-    }
-
-    private static <T> Set<String> getAutoPkProps(TableMeta<T> m) {
-        Set<String> s = new HashSet<>();
-        if (m.keys == null) return s;
-        for (Map.Entry<String, PrimaryKey> e : m.keys.entrySet()) {
-            if (e.getValue() != null && e.getValue().auto()) s.add(e.getKey());
-        }
-        return s;
     }
 
     /**
