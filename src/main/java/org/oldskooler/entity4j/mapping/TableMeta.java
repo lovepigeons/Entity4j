@@ -19,9 +19,7 @@ import java.util.*;
 public final class TableMeta<T> {
     public final Class<T> type;
     public final String table;
-    public final String idColumn;               // unquoted
-    public final Field idField;                // may be null
-    public final boolean idAuto;
+    public final Map<String, PrimaryKey> keys;
     public final Map<String, String> propToColumn; // property -> column
     public final Map<String, Field> propToField;  // property -> Field
 
@@ -57,9 +55,10 @@ public final class TableMeta<T> {
      * Build from fluent mapping (MappingRegistry)
      */
     private static <T> TableMeta<T> from(EntityMapping<T> em) {
-        Field idF = em.idProperty == null ? null : em.propToField.get(em.idProperty);
         return new TableMeta<>(
-                em.type, em.table, em.idColumn, idF, em.idAuto,
+                em.type,
+                em.table,
+                em.keys,
                 new LinkedHashMap<>(em.propToColumn),
                 em.propToField,
                 em.columns
@@ -71,7 +70,6 @@ public final class TableMeta<T> {
      */
     @SuppressWarnings("unchecked")
     private static <T> TableMeta<T> tryAnnotations(Class<T> type) {
-        // If @Entity is not present, bail out (use convention or registry instead).
         Entity entity = type.getAnnotation(Entity.class);
         if (entity == null) return null;
 
@@ -83,29 +81,23 @@ public final class TableMeta<T> {
         LinkedHashMap<String, Field> p2f = new LinkedHashMap<>();
         LinkedHashMap<String, String> p2c = new LinkedHashMap<>();
         LinkedHashMap<String, ColumnMeta> cols = new LinkedHashMap<>();
-
-        String idProp = null;
-        String idCol = null;
-        Field idF = null;
-        boolean idAuto = true; // your original default
+        LinkedHashMap<String, PrimaryKey> keys = new LinkedHashMap<>();
 
         for (Field f : allInstanceFields(type)) {
             if (Modifier.isStatic(f.getModifiers())) continue;
 
-            // Skip @NotMapped
-            if (f.getAnnotation(NotMapped.class) != null) continue;
-
             String prop = f.getName();
-
-            // Determine final column name (Column.name, then Id.name, else default)
             Column colAnn = f.getAnnotation(Column.class);
             Id idAnn = f.getAnnotation(Id.class);
+
+            // Skip @NotMapped entirely
+            if (f.getAnnotation(NotMapped.class) != null) continue;
 
             String col = defaultColumnName(prop);
             if (colAnn != null && !colAnn.name().isEmpty()) col = colAnn.name();
             if (idAnn != null && !idAnn.name().isEmpty())   col = idAnn.name();
 
-            // Gather column hints from @Column (nullable/type/precision/scale/length)
+            // Column hints / defaults
             boolean nullable = true;
             String typeOverride = "";
             int precision = 0;
@@ -120,22 +112,24 @@ public final class TableMeta<T> {
                 length       = colAnn.length();
             }
 
-            // If @Id is present, PK is non-nullable and we capture id settings
+            // If @Id present -> mark PK and force non-nullable
             if (idAnn != null) {
-                idProp = prop;
-                idF = f;
-                idCol = col;
-                idAuto = idAnn.auto(); // matches your Id.java
-                nullable = false;      // PK non-nullable by default
+                boolean auto = idAnn.auto();
+
+                if (auto && !keys.isEmpty()) {
+                    throw new IllegalArgumentException("auto=true not supported when multiple ID columns are declared for type: " + type.getName());
+                }
+
+                keys.put(prop, new PrimaryKey(prop, col, auto));
+                nullable = false;
             }
 
-            // Build maps (note: columns keyed by *column name* to match dialect lookups)
             p2f.put(prop, f);
             p2c.put(prop, col);
             cols.put(col, new ColumnMeta(prop, col, nullable, typeOverride, precision, scale, length));
         }
 
-        return new TableMeta<>(type, tableName, idCol, idF, idAuto, p2c, p2f, cols);
+        return new TableMeta<>(type, tableName, keys, p2c, p2f, cols);
     }
 
     /**
@@ -146,6 +140,9 @@ public final class TableMeta<T> {
         LinkedHashMap<String, String> p2c = new LinkedHashMap<>();
         LinkedHashMap<String, Field> p2f = new LinkedHashMap<>();
         LinkedHashMap<String, ColumnMeta> cols = new LinkedHashMap<>();
+
+        LinkedHashMap<String, PrimaryKey> keys = new LinkedHashMap<>();
+
         Field idF = null;
         String idCol = null;
         boolean idAuto = false;
@@ -162,24 +159,22 @@ public final class TableMeta<T> {
                 idF = f;
                 idCol = "id";
                 cols.put("id", new ColumnMeta("id", "id", false, "", 0, 0, -1)); // PK non-nullable by default
+
+                keys.put("id", new PrimaryKey("id", idCol, true));
             }
         }
-        return new TableMeta<>(type, table, idCol, idF, idAuto, p2c, p2f, cols);
+        return new TableMeta<>(type, table, keys, p2c, p2f, cols);
     }
 
     public TableMeta(Class<T> type,
                      String table,
-                     String idColumn,
-                     Field idField,
-                     boolean idAuto,
+                     Map<String, PrimaryKey> keys,
                      Map<String, String> propToColumn,
                      Map<String, Field> propToField,
                      Map<String, ColumnMeta> columns) {
         this.type = Objects.requireNonNull(type, "type");
         this.table = Objects.requireNonNull(table, "table");
-        this.idColumn = idColumn;
-        this.idField = idField;
-        this.idAuto = idAuto;
+        this.keys = Collections.unmodifiableMap(new LinkedHashMap<>(keys));
         this.propToColumn = Collections.unmodifiableMap(new LinkedHashMap<>(propToColumn));
         this.propToField = Collections.unmodifiableMap(new LinkedHashMap<>(propToField));
         this.columns = (columns == null) ? Collections.unmodifiableMap(new HashMap<>())

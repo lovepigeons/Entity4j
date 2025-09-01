@@ -3,6 +3,7 @@ package org.oldskooler.entity4j.dialect.types;
 import org.oldskooler.entity4j.annotations.Column;
 import org.oldskooler.entity4j.dialect.SqlDialect;
 import org.oldskooler.entity4j.mapping.ColumnMeta;
+import org.oldskooler.entity4j.mapping.PrimaryKey;
 import org.oldskooler.entity4j.mapping.TableMeta;
 
 import java.lang.reflect.Field;
@@ -20,15 +21,27 @@ public class MySqlDialect implements SqlDialect {
     @Override
     public <T> String createTableDdl(TableMeta<T> m, boolean ifNotExists) {
         List<String> defs = new ArrayList<>();
-        for (Map.Entry<String,String> e : m.propToColumn.entrySet()) {
-            String prop = e.getKey();
-            String col = e.getValue();
 
-            boolean nullable = true;
+        // Build a quick lookup: prop -> (isPk, isAuto)
+        Map<String, Boolean> isPkProp   = new HashMap<>();
+        Map<String, Boolean> isAutoProp = new HashMap<>();
+        if (m.keys != null) {
+            m.keys.values().forEach(pk -> {
+                String prop = m.propToField.get(pk.property).getName();
+                isPkProp.put(prop, true);
+                isAutoProp.put(prop, pk.auto());
+            });
+        }
+
+        // Column definitions
+        for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
+            String prop = e.getKey();
+            String col  = e.getValue();
 
             Field f = m.propToField.get(prop);
-            Column colAnn = f.getAnnotation(Column.class);
 
+            boolean nullable = true;
+            Column colAnn = f.getAnnotation(Column.class);
             if (colAnn == null) {
                 if (m.columns.containsKey(col)) {
                     ColumnMeta meta = m.columns.get(col);
@@ -39,20 +52,35 @@ public class MySqlDialect implements SqlDialect {
             }
 
             String type = resolveSqlType(m, f, col);
-            boolean isId   = (m.idField != null && f.getName().equals(m.idField.getName()));
-            boolean auto   = isId && m.idAuto;
-            // boolean nullable = colAnn == null || colAnn.nullable();
+            boolean auto = Boolean.TRUE.equals(isAutoProp.get(prop));
 
             StringBuilder d = new StringBuilder(q(col)).append(' ').append(type);
-            if (auto) d.append(autoIncrementClause());
+            if (auto) d.append(autoIncrementClause()); // per-dialect auto/identity
             if (!nullable) d.append(" NOT NULL");
+
             defs.add(d.toString());
         }
-        if (m.idColumn != null) defs.add("PRIMARY KEY (" + q(m.idColumn) + ")");
 
-        return "CREATE TABLE" + (ifNotExists ? " IF NOT EXISTS" : "") + " " + q(m.table) +
+        // PRIMARY KEY (...) — supports 0/1/many keys
+        if (!m.keys.isEmpty()) {
+            // Keep deterministic order: iterate over m.keys.values()
+            List<String> pkCols = new ArrayList<>(m.keys.size());
+            for (PrimaryKey pk : m.keys.values()) {
+                String prop = pk.property; // pk.getField().getName();
+                String col  = m.propToColumn.get(prop);
+                if (col == null) {
+                    throw new IllegalStateException("Primary key property has no column mapping: " + prop);
+                }
+                pkCols.add(q(col));
+            }
+            defs.add("PRIMARY KEY (" + String.join(", ", pkCols) + ")");
+        }
+
+        return "CREATE TABLE" + (ifNotExists && supportsCreateIfNotExists() ? " IF NOT EXISTS" : "") + " " + q(m.table) +
                 " (\n  " + String.join(",\n  ", defs) + "\n)";
     }
+
+
     @Override
     public <T> String dropTableDdl(TableMeta<T> m, boolean ifExists) {
         return "DROP TABLE" + (ifExists ? " IF EXISTS" : "") + " " + q(m.table);

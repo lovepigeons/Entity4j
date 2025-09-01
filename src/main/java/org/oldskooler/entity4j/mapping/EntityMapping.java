@@ -9,9 +9,7 @@ import java.util.*;
 public final class EntityMapping<T> {
     public final Class<T> type;
     public final String table;
-    public final String idProperty;                // may be null
-    public final String idColumn;                  // may be null
-    public final boolean idAuto;
+    public final Map<String, PrimaryKey> keys;
 
     /** property - column name (unquoted) */
     public final LinkedHashMap<String, String> propToColumn;
@@ -24,16 +22,12 @@ public final class EntityMapping<T> {
 
     public EntityMapping(Class<T> type,
                          String table,
-                         String idProperty,
-                         String idColumn,
-                         boolean idAuto,
+                         Map<String, PrimaryKey> keys,
                          LinkedHashMap<String, String> propToColumn,
                          Map<String, ColumnMeta> columns) {
         this.type = Objects.requireNonNull(type, "type");
         this.table = Objects.requireNonNull(table, "table");
-        this.idProperty = idProperty;
-        this.idColumn = idColumn;
-        this.idAuto = idAuto;
+        this.keys = Collections.unmodifiableMap(keys);
 
         this.propToColumn = new LinkedHashMap<>(Objects.requireNonNull(propToColumn, "propToColumn"));
 
