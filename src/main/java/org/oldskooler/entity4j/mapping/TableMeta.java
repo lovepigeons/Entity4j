@@ -4,6 +4,8 @@ import org.oldskooler.entity4j.annotations.Column;
 import org.oldskooler.entity4j.annotations.Entity;
 import org.oldskooler.entity4j.annotations.Id;
 import org.oldskooler.entity4j.annotations.NotMapped;
+import org.oldskooler.entity4j.util.Names;
+import org.oldskooler.entity4j.util.ReflectionUtils;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -33,22 +35,13 @@ public final class TableMeta<T> {
      */
     public static <T> TableMeta<T> of(Class<T> type, MappingRegistry registry) {
         Optional<EntityMapping<T>> mapped = registry.find(type);
-        if (mapped.isPresent()) return from(mapped.get());
 
-        TableMeta<T> annBased = tryAnnotations(type);
-        if (annBased != null) return annBased;
+        if (mapped.isPresent()) {
+            return from(mapped.get());
+        }
 
-        return convention(type);
-    }
+        return tryAnnotations(type);
 
-    /**
-     * Deprecated: registry-unaware (kept for compatibility).
-     */
-    @Deprecated
-    public static <T> TableMeta<T> of(Class<T> type) {
-        TableMeta<T> annBased = tryAnnotations(type);
-        if (annBased != null) return annBased;
-        return convention(type);
     }
 
     /**
@@ -70,12 +63,16 @@ public final class TableMeta<T> {
      */
     @SuppressWarnings("unchecked")
     private static <T> TableMeta<T> tryAnnotations(Class<T> type) {
-        Entity entity = type.getAnnotation(Entity.class);
-        if (entity == null) return null;
+        String tableName = Names.toSnake(type.getName());
 
-        String tableName = entity.table();
-        if (tableName == null || tableName.isEmpty()) {
-            tableName = defaultTableName(type);
+        Entity entity = type.getAnnotation(Entity.class);
+
+        if (entity != null) {
+            tableName = entity.table();
+
+            if (tableName == null || tableName.isEmpty()) {
+                tableName = Names.defaultTableName(type);
+            }
         }
 
         LinkedHashMap<String, Field> p2f = new LinkedHashMap<>();
@@ -83,7 +80,7 @@ public final class TableMeta<T> {
         LinkedHashMap<String, ColumnMeta> cols = new LinkedHashMap<>();
         LinkedHashMap<String, PrimaryKey> keys = new LinkedHashMap<>();
 
-        for (Field f : allInstanceFields(type)) {
+        for (Field f : ReflectionUtils.getInstanceFields(type)) {
             if (Modifier.isStatic(f.getModifiers())) continue;
 
             String prop = f.getName();
@@ -93,7 +90,7 @@ public final class TableMeta<T> {
             // Skip @NotMapped entirely
             if (f.getAnnotation(NotMapped.class) != null) continue;
 
-            String col = defaultColumnName(prop);
+            String col = Names.defaultColumnName(prop);
             if (colAnn != null && !colAnn.name().isEmpty()) col = colAnn.name();
             if (idAnn != null && !idAnn.name().isEmpty())   col = idAnn.name();
 
@@ -147,9 +144,7 @@ public final class TableMeta<T> {
         String idCol = null;
         boolean idAuto = false;
 
-        for (Field f : allInstanceFields(type)) {
-            if (Modifier.isStatic(f.getModifiers())) continue;
-
+        for (Field f : ReflectionUtils.getInstanceFields(type)) {
             f.setAccessible(true);
             p2c.put(f.getName(), f.getName());
             p2f.put(f.getName(), f);
@@ -179,47 +174,5 @@ public final class TableMeta<T> {
         this.propToField = Collections.unmodifiableMap(new LinkedHashMap<>(propToField));
         this.columns = (columns == null) ? Collections.unmodifiableMap(new HashMap<>())
                 : Collections.unmodifiableMap(new LinkedHashMap<>(columns));
-    }
-
-    private static List<Field> allInstanceFields(Class<?> c) {
-        ArrayList<Field> out = new ArrayList<>();
-        for (Class<?> k = c; k != null && k != Object.class; k = k.getSuperclass()) {
-            for (Field f : k.getDeclaredFields()) {
-                if (!Modifier.isStatic(f.getModifiers())) out.add(f);
-            }
-        }
-        return out;
-    }
-
-    /**
-     * Best-effort snake_case-ish default for table names (fallback if @Entity.table is empty).
-     */
-    private static String defaultTableName(Class<?> t) {
-        return t.getSimpleName().toLowerCase(Locale.ROOT);
-    }
-
-    /**
-     * Best-effort snake_case-ish default for column names (fallback if @Column.name is empty).
-     */
-    private static String defaultColumnName(String prop) {
-        // Convert simple camelCase -> snake_case; keep simple fallback too.
-        StringBuilder sb = new StringBuilder(prop.length() + 4);
-        for (int i = 0; i < prop.length(); i++) {
-            char ch = prop.charAt(i);
-            if (Character.isUpperCase(ch)) {
-                sb.append('_').append(Character.toLowerCase(ch));
-            } else {
-                sb.append(ch);
-            }
-        }
-        return sb.toString();
-    }
-
-    private static Class<?> classOrNull(String fqcn) {
-        try {
-            return Class.forName(fqcn);
-        } catch (ClassNotFoundException e) {
-            return null;
-        }
     }
 }

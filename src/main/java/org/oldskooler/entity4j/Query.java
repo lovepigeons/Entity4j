@@ -5,11 +5,14 @@ import org.oldskooler.entity4j.functions.SFunction;
 import org.oldskooler.entity4j.mapping.TableMeta;
 import org.oldskooler.entity4j.select.SelectionPart;
 import org.oldskooler.entity4j.select.Selector;
+import org.oldskooler.entity4j.util.JdbcParamBinder;
 import org.oldskooler.entity4j.util.Names;
 import org.oldskooler.entity4j.util.LambdaUtils;
 import org.oldskooler.entity4j.util.ReflectionUtils;
 
 import java.lang.reflect.Field;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -227,6 +230,8 @@ public class Query<T> {
     /** DTO projection via setters matching column labels (use AS to control labels). */
     public <R> List<R> toList(Class<R> dtoType) {
         String sql = buildSelectSql();
+
+        TableMeta<R> tempMeta = TableMeta.of(dtoType, this.ctx.mappingRegistry());
         List<Map<String, Object>> rs = ctx.executeQueryMap(sql, params);
 
         List<R> result = new ArrayList<>();
@@ -236,8 +241,26 @@ public class Query<T> {
 
                 for (Map.Entry<String, Object> entry : row.entrySet()) {
                     String column = entry.getKey();
+                    Optional<String> property = tempMeta.propToColumn.entrySet().stream().filter(x -> x.getValue().equals(column)).map(Map.Entry::getKey).findFirst();
                     Object value = entry.getValue();
 
+                    if (property.isPresent()) {
+                        if (tempMeta.propToField.containsKey(property.get())) {
+                            try {
+                                Field field = tempMeta.propToField.get(property.get());
+
+                                if (field == null) {
+                                    field = dtoType.getDeclaredField(column);
+                                }
+
+                                ReflectionUtils.setField(dto, field, value);
+                            } catch (NoSuchFieldException e) {
+                                // If no matching field exists in the DTO, just ignore
+                            }
+                        }
+                    }
+
+                    /*
                     try {
                         Field field = Arrays.stream(dtoType.getDeclaredFields())
                                 .filter(x -> x.getAnnotation(Column.class) != null
@@ -252,7 +275,7 @@ public class Query<T> {
                         ReflectionUtils.setField(dto, field, value);
                     } catch (NoSuchFieldException e) {
                         // If no matching field exists in the DTO, just ignore
-                    }
+                    }*/
                 }
 
                 result.add(dto);
