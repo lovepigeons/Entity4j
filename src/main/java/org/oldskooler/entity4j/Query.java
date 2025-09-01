@@ -233,9 +233,10 @@ public class Query<T> {
 
     public <R> List<R> toList(Class<R> dtoType) {
         String sql = buildSelectSql();
-        List<Map<String, Object>> rs = ctx.executeQueryMap(sql, params);
 
+        List<Map<String, Object>> rs = ctx.executeQueryMap(sql, params);
         List<R> result = new ArrayList<>();
+
         for (Map<String, Object> row : rs) {
             try {
                 // Create a new instance of the DTO
@@ -247,11 +248,11 @@ public class Query<T> {
                     Object value = entry.getValue();
 
                     try {
-                        Field field = Arrays.stream(dtoType.getFields())
+                        Field field = Arrays.stream(dtoType.getDeclaredFields())
                                 .filter(x -> x.getAnnotation(Column.class) != null && x.getAnnotation(Column.class).name().equals(column))
                                 .findFirst()
                                 .orElse(null);
-
+                        
                         if (field == null) {
                             field = dtoType.getDeclaredField(column);
                         }
