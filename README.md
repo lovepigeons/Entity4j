@@ -10,7 +10,6 @@ Entity4j is a minimal, type-safe object relational mapper for Java. It lets you 
 
 ## Table of Contents
 
-- [Features](#features)
 - [Quick Start](#quick-start)
     - [Defining Entities](#defining-entities)
     - [Database Configuration](#database-configuration)
@@ -19,25 +18,15 @@ Entity4j is a minimal, type-safe object relational mapper for Java. It lets you 
 - [Fluent Mappings](#fluent-mappings)
 - [Filters API](#filters-api)
 - [Complex Query Example](#complex-query-example)
+- [Column Selection](#column-selection)
+    - [Basic Column Selection](#basic-column-selection)
+    - [Selecting into Custom Types](#selecting-into-custom-types)
+    - [Using toMapList()](#using-tomaplist)
 - [CRUD Operations](#crud-operations)
 - [Debugging and SQL Output](#debugging-and-sql-output)
-- [Features](#features)
+- [Advanced Features](#advanced-features)
 - [License](#license)
 
-## Features
-
-- Annotation-driven mapping
-- Type-safe lambdas for filters and ordering
-- CRUD helpers: insert, update, delete
-- SQL preview with parameters
-- Limit and offset for pagination
-- Automatic camelCase to snake_case mapping
-- Automatic table creation with `createTable` and `dropTableIfExists`
-- Rich `@Column` annotation for type, length, precision, scale, and custom definitions
-- `@NotMapped` support for transient fields
-- DbContext can be extended with custom methods and configuration
-- Multi-database support: MySQL, PostgreSQL, SQL Server, and SQLite
-- Automatic dialect detection or explicit dialect configuration (recommended)
 ---
 
 ## Installation
@@ -267,6 +256,101 @@ ORDER BY rating DESC LIMIT 10
 
 This finds users between ages 30 and 60 or active users whose names contain "Ada", ordered by rating descending.
 
+## Column Selection
+
+Entity4j provides powerful column selection capabilities that allow you to project only the columns you need, improving query performance and enabling you to shape your data exactly as needed.
+
+### Basic Column Selection
+
+Instead of selecting all columns with `SELECT *`, you can specify exactly which columns to retrieve:
+
+```java
+// Select only specific columns from User
+Query<User> query = ctx.from(User.class)
+    .select(s -> s
+        .col(User::getId).as("user_id")
+        .col(User::getName).as("name")
+        .col(User::getRating).as("rating"))
+    .filter(f -> f.equals(User::getStatus, "ACTIVE"))
+    .orderBy(User::getName, true);
+
+// Get results as maps (no class binding required)
+List<Map<String, Object>> maps = query.toMapList();
+
+// Or bind to a custom DTO class
+List<UserSummaryDto> summaries = query.toList(UserSummaryDto.class);
+```
+
+**Generated SQL:**
+```sql
+SELECT id AS user_id, name AS name, rating AS rating
+FROM users 
+WHERE status = ?
+ORDER BY name ASC
+```
+
+### Selecting into Custom Types
+
+Create a custom DTO class to hold your projected data:
+
+```java
+public class UserSummaryDto {
+    private Long userId;
+    private String name;
+    private Double rating;
+    
+    // getters and setters...
+}
+```
+
+Then select specific columns and map them to your DTO:
+
+```java
+List<UserSummaryDto> summaries = ctx.from(User.class)
+    .select(s -> s
+        .col(User::getId).as("user_id")        // Maps to DTO's userId field
+        .col(User::getName).as("name")        // Maps to DTO's name field  
+        .col(User::getRating).as("rating"))   // Maps to DTO's rating field
+    .filter(f -> f.equals(User::getStatus, "ACTIVE"))
+    .orderBy(User::getName, true)
+    .toList(UserSummaryDto.class);
+```
+
+**Important Note for Joined Entities:** When selecting columns from joined tables, you must specify the entity class for the column reference:
+
+```java
+// WRONG - This won't work for joined entities
+.col(Order::getTotal).as("total")
+
+// CORRECT - Specify Order.class for joined entity columns  
+.col(Order.class, Order::getTotal).as("total")
+
+// Main entity doesn't need class specification
+.col(User::getName).as("name")
+```
+
+### Using toMapList()
+
+When you don't want to create a specific class, use `toMapList()` to get results as a list of maps:
+
+```java
+List<Map<String, Object>> results = ctx.from(User.class)
+    .select(s -> s
+        .col(User::getId).as("id")
+        .col(User::getName).as("name")
+        .col(User::getRating).as("rating"))
+    .filter(f -> f.greater(User::getRating, 4.0))
+    .toMapList();
+
+// Access the data
+for (Map<String, Object> row : results) {
+    Long id = (Long) row.get("id");
+    String name = (String) row.get("name");
+    Double rating = (Double) row.get("rating");
+    System.out.println(name + " has rating: " + rating);
+}
+```
+
 ## CRUD Operations
 
 ```java
@@ -378,6 +462,44 @@ LIMIT 50
 ```
 
 Params would be `[?1=ACTIVE, ?2=1000.0]`.
+
+### 4. Complex Join with Column Selection
+
+Here's a more complete example showing joins with column selection into a custom DTO:
+
+```java
+public class UserOrderDto {
+    private Long orderId;
+    private Long userId;
+    private String name;
+    private Double total;
+    
+    // getters and setters...
+}
+
+// Query with join and column selection
+List<UserOrderDto> results = ctx.from(User.class).as("u")
+    .innerJoin(Order.class, "o", j -> 
+        j.eq(User::getId, Order::getUserId))
+    .select(s -> s
+        .col(Order.class, Order::getId).as("order_id")     // Note: Order.class required
+        .col(User::getId).as("user_id")                    // Main entity doesn't need class
+        .col(User::getName).as("name")
+        .col(Order.class, Order::getTotal).as("total"))  // Note: Order.class required
+    .filter(f -> f.equals(User::getStatus, "ACTIVE"))
+    .orderBy(User::getName, true)
+    .thenBy(Order.class, Order::getPlacedAt, false)
+    .toList(UserOrderDto.class);
+```
+
+**Generated SQL:**
+```sql
+SELECT o.id AS order_id, u.id AS user_id, u.name AS name, o.total AS total
+FROM users u
+INNER JOIN orders o ON u.id = o.user_id  
+WHERE u.status = ?
+ORDER BY u.name ASC, o.placed_at DESC
+```
 
 ## License
 
