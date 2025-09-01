@@ -303,7 +303,7 @@ public class UserSummaryDto {
 }
 ```
 
-Then select specific columns and map them to your DTO:
+Then select specific columns and map them to your DTO. If it does not map to the correct column, you can explicitly set which column to map by using fluent mapping on the entity, or using ``@Column(name='user_id')`` above the field.
 
 ```java
 List<UserSummaryDto> summaries = ctx.from(User.class)
