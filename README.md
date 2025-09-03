@@ -6,7 +6,7 @@ Entity4j is a minimal, type-safe object relational mapper for Java. It lets you 
 
 **Built and tested against Java 1.8**
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ## Table of Contents
 
