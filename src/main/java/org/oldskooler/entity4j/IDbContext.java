@@ -5,27 +5,51 @@ import org.oldskooler.entity4j.dialect.SqlDialectType;
 import org.oldskooler.entity4j.mapping.MappingRegistry;
 import org.oldskooler.entity4j.mapping.ModelBuilder;
 import org.oldskooler.entity4j.mapping.TableMeta;
-import org.oldskooler.entity4j.mapping.PrimaryKey;
+import org.oldskooler.entity4j.operations.DbBatchOperations;
+import org.oldskooler.entity4j.operations.DbCrudOperations;
+import org.oldskooler.entity4j.operations.DbDdlOperations;
+import org.oldskooler.entity4j.operations.DbQueryExecutor;
 import org.oldskooler.entity4j.util.*;
 
-import java.lang.reflect.Field;
 import java.sql.*;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.*;
 
+/**
+ * Abstract base class for database context implementations that provides core database operations
+ * including CRUD, DDL, batch operations, and query execution capabilities.
+ * <p>
+ * This class serves as the main entry point for interacting with the database and managing
+ * entity mappings. It supports automatic SQL dialect detection and provides a fluent API
+ * for database operations.
+ * </p>
+ * <p>
+ * Implementations must override the {@link #onModelCreating(ModelBuilder)} method to configure
+ * entity mappings and relationships.
+ * </p>
+ *
+ * @author Entity4J Framework
+ * @since 1.0.0
+ */
 public abstract class IDbContext implements AutoCloseable {
+
+    /** The underlying JDBC connection */
     private final Connection connection;
+
+    /** The SQL dialect for database-specific operations */
     private final SqlDialect dialect;
 
+    /** Registry for entity-to-table mappings */
     private final MappingRegistry mappingRegistry = new MappingRegistry();
+
+    /** Flag indicating whether the model has been built */
     private boolean modelBuilt = false;
 
-    private static final int MAX_PARAMS_PER_STATEMENT = 1800; // keeps under SQL Server's 2100 limit with some headroom
-
     /**
-     * Explicit dialect via enum
+     * Constructs a new database context with explicit SQL dialect specification via enum.
+     *
+     * @param connection the JDBC connection to use
+     * @param dialectType the SQL dialect type to use
+     * @throws NullPointerException if connection is null
      */
     public IDbContext(Connection connection, SqlDialectType dialectType) {
         this.connection = Objects.requireNonNull(connection, "connection");
@@ -33,7 +57,11 @@ public abstract class IDbContext implements AutoCloseable {
     }
 
     /**
-     * Explicit dialect instance
+     * Constructs a new database context with an explicit SQL dialect instance.
+     *
+     * @param connection the JDBC connection to use
+     * @param dialect the SQL dialect instance to use
+     * @throws NullPointerException if connection or dialect is null
      */
     public IDbContext(Connection connection, SqlDialect dialect) {
         this.connection = Objects.requireNonNull(connection, "connection");
@@ -41,15 +69,29 @@ public abstract class IDbContext implements AutoCloseable {
     }
 
     /**
-     * Auto-detect from JDBC metadata
+     * Constructs a new database context with automatic SQL dialect detection from JDBC metadata.
+     *
+     * @param connection the JDBC connection to use
+     * @throws SQLException if unable to detect the dialect from connection metadata
+     * @throws NullPointerException if connection is null
      */
     public IDbContext(Connection connection) throws SQLException {
         this.connection = Objects.requireNonNull(connection, "connection");
         this.dialect = DialectDetector.detectDialect(connection);
     }
 
+    /**
+     * Override this method to configure entity mappings and relationships.
+     * This method is called automatically when the model is first needed.
+     *
+     * @param model the model builder to configure mappings
+     */
     public abstract void onModelCreating(ModelBuilder model);
 
+    /**
+     * Ensures the entity model has been built by calling {@link #onModelCreating(ModelBuilder)}
+     * if it hasn't been called yet.
+     */
     private void ensureModelBuilt() {
         if (!modelBuilt) {
             onModelCreating(new ModelBuilder(mappingRegistry));
@@ -57,206 +99,206 @@ public abstract class IDbContext implements AutoCloseable {
         }
     }
 
+    /**
+     * Creates a new query builder for the specified entity type.
+     *
+     * @param <T> the entity type
+     * @param type the class of the entity to query
+     * @return a new Query instance for the specified type
+     */
     public <T> Query<T> from(Class<T> type) {
         return new Query<>(this, TableMeta.of(type, mappingRegistry));
     }
 
-    /* ---------------------------
-       Public SQL builder APIs
-       --------------------------- */
+    // DDL Operations
 
+    /**
+     * Generates SQL for creating a table for the specified entity type.
+     * Equivalent to calling {@link #createTableSql(Class, boolean)} with {@code ifNotExists = true}.
+     *
+     * @param <T> the entity type
+     * @param type the class of the entity
+     * @return the CREATE TABLE SQL statement
+     */
     public <T> String createTableSql(Class<T> type) {
         return createTableSql(type, true);
     }
 
+    /**
+     * Generates SQL for creating a table for the specified entity type.
+     *
+     * @param <T> the entity type
+     * @param type the class of the entity
+     * @param ifNotExists whether to include IF NOT EXISTS clause
+     * @return the CREATE TABLE SQL statement
+     */
     public <T> String createTableSql(Class<T> type, boolean ifNotExists) {
-        return ddlFor(type, ifNotExists);
+        return getDdlOperations().createTableSql(type, ifNotExists);
     }
 
+    /**
+     * Generates SQL for dropping a table for the specified entity type.
+     * Equivalent to calling {@link #dropTableSql(Class, boolean)} with {@code ifExists = true}.
+     *
+     * @param <T> the entity type
+     * @param type the class of the entity
+     * @return the DROP TABLE SQL statement
+     */
     public <T> String dropTableSql(Class<T> type) {
         return dropTableSql(type, true);
     }
 
+    /**
+     * Generates SQL for dropping a table for the specified entity type.
+     *
+     * @param <T> the entity type
+     * @param type the class of the entity
+     * @param ifExists whether to include IF EXISTS clause
+     * @return the DROP TABLE SQL statement
+     */
     public <T> String dropTableSql(Class<T> type, boolean ifExists) {
-        ensureModelBuilt();
-        TableMeta<T> m = TableMeta.of(type, mappingRegistry);
-        return dialect.dropTableDdl(m, ifExists && dialect.supportsDropIfExists());
-    }
-
-    public <T> int createTable(Class<T> type) {
-        ensureModelBuilt();
-        String sql = createTableSql(type, true);
-        try (Statement st = connection.createStatement()) {
-            return st.executeUpdate(sql);
-        } catch (SQLException e) {
-            throw new RuntimeException("createTable failed for " + type.getName() + ": " + sql, e);
-        }
-    }
-
-    public int createTables(Class<?>... types) {
-        int total = 0;
-        for (Class<?> t : types) total += createTable(t);
-        return total;
-    }
-
-    public <T> int dropTableIfExists(Class<T> type) {
-        ensureModelBuilt();
-        String sql = dropTableSql(type, true);
-        try (Statement st = connection.createStatement()) {
-            return st.executeUpdate(sql);
-        } catch (SQLException e) {
-            throw new RuntimeException("dropTableIfExists failed for " + type.getName() + ": " + sql, e);
-        }
+        return getDdlOperations().dropTableSql(type, ifExists);
     }
 
     /**
-     * Build CREATE TABLE statement via dialect.
+     * Creates a table for the specified entity type in the database.
+     *
+     * @param <T> the entity type
+     * @param type the class of the entity
+     * @return the number of statements executed (typically 1)
      */
-    private <T> String ddlFor(Class<T> type, boolean ifNotExists) {
-        ensureModelBuilt();
-        TableMeta<T> m = TableMeta.of(type, mappingRegistry);
-        boolean useIfNotExists = ifNotExists && dialect.supportsCreateIfNotExists();
-        return dialect.createTableDdl(m, useIfNotExists);
+    public <T> int createTable(Class<T> type) {
+        return getDdlOperations().createTable(type);
     }
 
-    /* ---------------------------
-       CRUD
-       --------------------------- */
+    /**
+     * Creates tables for multiple entity types in the database.
+     *
+     * @param types the classes of the entities
+     * @return the total number of statements executed
+     */
+    public int createTables(Class<?>... types) {
+        return getDdlOperations().createTables(types);
+    }
 
+    /**
+     * Drops the table for the specified entity type if it exists.
+     *
+     * @param <T> the entity type
+     * @param type the class of the entity
+     * @return the number of statements executed (typically 1 if table existed, 0 otherwise)
+     */
+    public <T> int dropTableIfExists(Class<T> type) {
+        return getDdlOperations().dropTableIfExists(type);
+    }
+
+    // CRUD Operations
+
+    /**
+     * Inserts a single entity into the database.
+     *
+     * @param <T> the entity type
+     * @param entity the entity to insert
+     * @return the number of rows affected (typically 1)
+     */
     public <T> int insert(T entity) {
-        ensureModelBuilt();
-        @SuppressWarnings("unchecked")
-        Class<T> type = (Class<T>) entity.getClass();
-        TableMeta<T> m = TableMeta.of(type, mappingRegistry);
-        try {
-            Map<String, Object> values = ReflectionUtils.extractValues(entity, m);
-
-            // Build insert column list excluding auto PK properties
-            Set<String> autoPkProps = PrimaryKeyUtils.getAutoPkProps(m);
-            List<String> cols = new ArrayList<>();
-            List<Object> params = new ArrayList<>();
-            for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
-                String prop = e.getKey();
-                if (autoPkProps.contains(prop)) continue;
-                cols.add(e.getValue()); // unquoted; dialect will quote
-                params.add(values.get(prop));
-            }
-
-            String sql = dialect.buildInsertSql(m, cols);
-
-            // If the dialect uses "RETURNING id" and we have exactly one auto PK
-            Optional<Map.Entry<String, PrimaryKey>> singleAuto = PrimaryKeyUtils.getSingleAutoPk(m);
-            if (dialect.useInsertReturning() && singleAuto.isPresent()) {
-                Field idField = m.propToField.get(singleAuto.get().getValue().property); // singleAuto.get().getValue().field();
-                try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                    JdbcParamBinder.bindParams(ps, params);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        if (rs.next()) {
-                            Object id = rs.getObject(1);
-                            ReflectionUtils.setField(entity, idField, id);
-                            return 1;
-                        }
-                        return 0;
-                    }
-                }
-            }
-
-            try (PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-                JdbcParamBinder.bindParams(ps, params);
-                int n = ps.executeUpdate();
-                Optional<Map.Entry<String, PrimaryKey>> singleAutoGk = PrimaryKeyUtils.getSingleAutoPk(m);
-                if (singleAutoGk.isPresent()) {
-                    Field idField = m.propToField.get(singleAutoGk.get().getValue().property); // singleAutoGk.get().getValue().field();
-                    try (ResultSet rs = ps.getGeneratedKeys()) {
-                        if (rs.next()) {
-                            Object id = rs.getObject(1);
-                            ReflectionUtils.setField(entity, idField, id);
-                        }
-                    }
-                }
-                return n;
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("insert failed", e);
-        }
+        return getCrudOperations().insert(entity);
     }
 
+    /**
+     * Updates a single entity in the database based on its primary key.
+     *
+     * @param <T> the entity type
+     * @param entity the entity to update
+     * @return the number of rows affected (typically 1)
+     */
     public <T> int update(T entity) {
-        ensureModelBuilt();
-        @SuppressWarnings("unchecked")
-        Class<T> t = (Class<T>) entity.getClass();
-        TableMeta<T> m = TableMeta.of(t, mappingRegistry);
-        if (m.keys == null || m.keys.isEmpty()) throw new IllegalStateException("@Id required for update");
-
-        try {
-            Map<String, Object> values = ReflectionUtils.extractValues(entity, m);
-
-            // SETs exclude all PK props
-            Set<String> pkProps = m.keys.keySet();
-            List<String> sets = new ArrayList<>();
-            List<Object> params = new ArrayList<>();
-            for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
-                String prop = e.getKey();
-                if (pkProps.contains(prop)) continue;
-                sets.add(dialect.q(e.getValue()) + " = ?");
-                params.add(values.get(prop));
-            }
-
-            // WHERE from PK columns
-            List<String> where = new ArrayList<>();
-            for (String prop : pkProps) {
-                String col = m.propToColumn.get(prop);
-                where.add(dialect.q(col) + " = ?");
-            }
-
-            // Append PK values
-            for (String prop : pkProps) {
-                Object v = values.get(prop);
-                if (v == null) throw new IllegalArgumentException("Entity primary key '" + prop + "' is null");
-                params.add(v);
-            }
-
-            String sql = "UPDATE " + dialect.q(m.table) + " SET " + String.join(", ", sets)
-                    + " WHERE " + String.join(" AND ", where);
-
-            try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                JdbcParamBinder.bindParams(ps, params);
-                return ps.executeUpdate();
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("update failed", e);
-        }
+        return getCrudOperations().update(entity);
     }
 
+    /**
+     * Deletes a single entity from the database based on its primary key.
+     *
+     * @param <T> the entity type
+     * @param entity the entity to delete
+     * @return the number of rows affected (typically 1)
+     */
     public <T> int delete(T entity) {
-        ensureModelBuilt();
-        @SuppressWarnings("unchecked")
-        Class<T> t = (Class<T>) entity.getClass();
-        TableMeta<T> m = TableMeta.of(t, mappingRegistry);
-        if (m.keys == null || m.keys.isEmpty()) throw new IllegalStateException("@Id required for delete");
-        try {
-            Map<String, Object> values = ReflectionUtils.extractValues(entity, m);
-
-            List<String> where = new ArrayList<>();
-            List<Object> params = new ArrayList<>();
-            for (String prop : m.keys.keySet()) {
-                String col = m.propToColumn.get(prop);
-                Object v = values.get(prop);
-                if (v == null) throw new IllegalArgumentException("Entity primary key '" + prop + "' is null");
-                where.add(dialect.q(col) + " = ?");
-                params.add(v);
-            }
-
-            String sql = "DELETE FROM " + dialect.q(m.table) + " WHERE " + String.join(" AND ", where);
-            try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                JdbcParamBinder.bindParams(ps, params);
-                return ps.executeUpdate();
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("delete failed", e);
-        }
+        return getCrudOperations().delete(entity);
     }
 
+    // Batch Operations
+
+    /**
+     * Inserts multiple entities into the database in a batch operation.
+     * This is more efficient than calling {@link #insert(Object)} multiple times.
+     *
+     * @param <T> the entity type
+     * @param entities the collection of entities to insert
+     * @return the total number of rows affected
+     */
+    public <T> int insertAll(Collection<T> entities) {
+        return getBatchOperations().insertAll(entities);
+    }
+
+    /**
+     * Updates multiple entities in the database in a batch operation.
+     * This is more efficient than calling {@link #update(Object)} multiple times.
+     *
+     * @param <T> the entity type
+     * @param entities the collection of entities to update
+     * @return the total number of rows affected
+     */
+    public <T> int updateAll(Collection<T> entities) {
+        return getBatchOperations().updateAll(entities);
+    }
+
+    /**
+     * Deletes multiple entities from the database in a batch operation.
+     * This is more efficient than calling {@link #delete(Object)} multiple times.
+     *
+     * @param <T> the entity type
+     * @param entities the collection of entities to delete
+     * @return the total number of rows affected
+     */
+    public <T> int deleteAll(Collection<T> entities) {
+        return getBatchOperations().deleteAll(entities);
+    }
+
+    // Query execution helpers
+
+    /**
+     * Executes a SQL query and maps the results to entity instances.
+     * This method is used internally by the Query builder.
+     *
+     * @param <T> the entity type
+     * @param m the table metadata for the entity
+     * @param sql the SQL query to execute
+     * @param params the parameters for the query
+     * @return a list of entity instances
+     */
+    <T> List<T> executeQuery(TableMeta<T> m, String sql, List<Object> params) {
+        return getQueryExecutor().executeQuery(m, sql, params);
+    }
+
+    /**
+     * Executes a SQL query and returns the results as maps.
+     * This method is used for queries that don't map to specific entity types.
+     *
+     * @param sql the SQL query to execute
+     * @param params the parameters for the query
+     * @return a list of maps containing column name-value pairs
+     */
+    List<Map<String, Object>> executeQueryMap(String sql, List<Object> params) {
+        return getQueryExecutor().executeQueryMap(sql, params);
+    }
+
+    /**
+     * Closes the underlying database connection.
+     * This method is called automatically when using try-with-resources.
+     *
+     * @throws RuntimeException if a SQLException occurs while closing the connection
+     */
     @Override
     public void close() throws RuntimeException {
         try {
@@ -266,263 +308,116 @@ public abstract class IDbContext implements AutoCloseable {
         }
     }
 
-    /* ---- helpers ---- */
-    <T> List<T> executeQuery(TableMeta<T> m, String sql, List<Object> params) {
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            JdbcParamBinder.bindParams(ps, params);
-            try (ResultSet rs = ps.executeQuery()) {
-                return RowMapper.mapAll(rs, m);
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("query failed", e);
-        }
-    }
-
-    List<Map<String, Object>> executeQueryMap(String sql, List<Object> params) {
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            JdbcParamBinder.bindParams(ps, params);
-            try (ResultSet rs = ps.executeQuery()) {
-                return RowMapper.toMapList(rs);
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("query failed", e);
-        }
-    }
-
-    /* ---------------------------
-       Batch CRUD
-       --------------------------- */
-
-    public <T> int insertAll(Collection<T> entities) {
-        if (entities == null || entities.isEmpty()) return 0;
-        @SuppressWarnings("unchecked")
-        Class<T> t = (Class<T>) entities.iterator().next().getClass();
-        TableMeta<T> m = TableMeta.of(t, mappingRegistry);
-
-        try {
-            // Column order (excluding auto PK props)
-            Set<String> autoPkProps = PrimaryKeyUtils.getAutoPkProps(m);
-            List<String> cols = new ArrayList<>();
-            for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
-                if (autoPkProps.contains(e.getKey())) continue;
-                cols.add(e.getValue());
-            }
-
-            // Prepare chunks to keep params under limits
-            int paramsPerRow = cols.size();
-            if (paramsPerRow == 0) throw new IllegalStateException("No columns to insert");
-            int maxRowsPerStmt = Math.max(1, MAX_PARAMS_PER_STATEMENT / paramsPerRow);
-
-            int total = 0;
-            Iterator<T> it = entities.iterator();
-            while (it.hasNext()) {
-                List<T> chunk = new ArrayList<>(Math.min(maxRowsPerStmt, entities.size()));
-                for (int i = 0; i < maxRowsPerStmt && it.hasNext(); i++) chunk.add(it.next());
-
-                // Build single SQL: INSERT INTO t (c1,c2) VALUES (?,?),(?,?)...
-                String sql = BatchSqlUtils.buildMultiRowInsertSql(dialect, m, cols, chunk.size());
-
-                // If dialect supports RETURNING and we have exactly one auto PK, keep it
-                Optional<Map.Entry<String, PrimaryKey>> singleAuto = PrimaryKeyUtils.getSingleAutoPk(m);
-                boolean wantsReturningIds = dialect.useInsertReturning() && singleAuto.isPresent();
-                if (wantsReturningIds) {
-                    Field idField = m.propToField.get(singleAuto.get().getValue().property);
-                    try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                        List<Object> params = new ArrayList<>(paramsPerRow * chunk.size());
-                        for (T e : chunk) BatchSqlUtils.collectInsertParams(e, m, cols, params);
-                        JdbcParamBinder.bindParams(ps, params);
-                        try (ResultSet rs = ps.executeQuery()) {
-                            int n = 0;
-                            for (T e : chunk) {
-                                if (!rs.next()) break;
-                                Object id = rs.getObject(1);
-                                ReflectionUtils.setField(e, idField, id);
-                                n++;
-                            }
-                            total += n;
-                        }
-                    }
-                } else {
-                    // Use generated keys (only assign back if exactly one auto PK)
-                    try (PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-                        List<Object> params = new ArrayList<>(paramsPerRow * chunk.size());
-                        for (T e : chunk) BatchSqlUtils.collectInsertParams(e, m, cols, params);
-                        JdbcParamBinder.bindParams(ps, params);
-                        int n = ps.executeUpdate();
-                        total += n;
-
-                        Optional<Map.Entry<String, PrimaryKey>> singleAutoGk = PrimaryKeyUtils.getSingleAutoPk(m);
-                        if (singleAutoGk.isPresent()) {
-                            Field idField = m.propToField.get(singleAutoGk.get().getValue().property); // singleAutoGk.get().getValue().field();
-                            try (ResultSet rs = ps.getGeneratedKeys()) {
-                                for (T e : chunk) {
-                                    if (!rs.next()) break;
-                                    Object id = rs.getObject(1);
-                                    ReflectionUtils.setField(e, idField, id);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            return total;
-        } catch (SQLException ex) {
-            throw new RuntimeException("insertAll failed", ex);
-        }
-    }
-
-    public <T> int updateAll(Collection<T> entities) {
-        if (entities == null || entities.isEmpty()) return 0;
-        @SuppressWarnings("unchecked")
-        Class<T> t = (Class<T>) entities.iterator().next().getClass();
-        TableMeta<T> m = TableMeta.of(t, mappingRegistry);
-        if (m.keys == null || m.keys.isEmpty()) throw new IllegalStateException("@Id required for batch update");
-
-        try {
-            // Build SQL template
-            // SET c1=?,c2=?,... WHERE pk1=? AND pk2=? ...
-            Set<String> pkProps = m.keys.keySet();
-            List<String> sets = new ArrayList<>();
-            for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
-                String prop = e.getKey();
-                if (pkProps.contains(prop)) continue;
-                sets.add(dialect.q(e.getValue()) + " = ?");
-            }
-            List<String> where = new ArrayList<>();
-            for (String prop : pkProps) {
-                where.add(dialect.q(m.propToColumn.get(prop)) + " = ?");
-            }
-            String sql = "UPDATE " + dialect.q(m.table) + " SET " + String.join(", ", sets) +
-                    " WHERE " + String.join(" AND ", where);
-
-            int paramsPerRow = sets.size() + pkProps.size();
-            int maxRowsPerStmt = Math.max(1, MAX_PARAMS_PER_STATEMENT / paramsPerRow);
-
-            int total = 0;
-            Iterator<T> it = entities.iterator();
-            while (it.hasNext()) {
-                try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                    int batched = 0;
-                    while (batched < maxRowsPerStmt && it.hasNext()) {
-                        T e = it.next();
-                        Map<String, Object> values = ReflectionUtils.extractValues(e, m);
-
-                        List<Object> params = new ArrayList<>(paramsPerRow);
-                        for (Map.Entry<String, String> col : m.propToColumn.entrySet()) {
-                            String prop = col.getKey();
-                            if (pkProps.contains(prop)) continue;
-                            params.add(values.get(prop));
-                        }
-                        for (String prop : pkProps) {
-                            Object idVal = values.get(prop);
-                            if (idVal == null) throw new IllegalArgumentException("Entity primary key '" + prop + "' is null");
-                            params.add(idVal);
-                        }
-
-                        JdbcParamBinder.bindParams(ps, params);
-                        ps.addBatch();
-                        batched++;
-                    }
-                    int[] counts = ps.executeBatch();
-                    total += BatchSqlUtils.sum(counts);
-                }
-            }
-            return total;
-        } catch (SQLException ex) {
-            throw new RuntimeException("updateAll failed", ex);
-        }
-    }
-
-    public <T> int deleteAll(Collection<T> entities) {
-        if (entities == null || entities.isEmpty()) return 0;
-        @SuppressWarnings("unchecked")
-        Class<T> t = (Class<T>) entities.iterator().next().getClass();
-        TableMeta<T> m = TableMeta.of(t, mappingRegistry);
-        if (m.keys == null || m.keys.isEmpty()) throw new IllegalStateException("@Id required for batch delete");
-
-        try {
-            List<String> pkPropsList = new ArrayList<>(m.keys.keySet());
-
-            // Single-column PK: fast path with IN (...)
-            if (pkPropsList.size() == 1) {
-                String prop = pkPropsList.get(0);
-                String col = m.propToColumn.get(prop);
-                String baseSql = "DELETE FROM " + dialect.q(m.table) + " WHERE " + dialect.q(col) + " IN ";
-
-                int maxIdsPerStmt = Math.max(1, MAX_PARAMS_PER_STATEMENT);
-                int total = 0;
-                Iterator<T> it = entities.iterator();
-                while (it.hasNext()) {
-                    List<Object> ids = new ArrayList<>(Math.min(maxIdsPerStmt, entities.size()));
-                    while (ids.size() < maxIdsPerStmt && it.hasNext()) {
-                        T e = it.next();
-                        Object idVal = ReflectionUtils.extractValues(e, m).get(prop);
-                        if (idVal == null) throw new IllegalArgumentException("Entity primary key '" + prop + "' is null");
-                        ids.add(idVal);
-                    }
-
-                    String placeholders = "(" + String.join(", ", Collections.nCopies(ids.size(), "?")) + ")";
-                    String sql = baseSql + placeholders;
-
-                    try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                        for (int i = 0; i < ids.size(); i++) ps.setObject(i + 1, ids.get(i));
-                        total += ps.executeUpdate();
-                    }
-                }
-                return total;
-            }
-
-            // Composite PK: build OR of (k1=? AND k2=? ...) groups, chunked
-            int pkArity = pkPropsList.size();
-            int paramsPerRow = pkArity;
-            int maxGroupsPerStmt = Math.max(1, MAX_PARAMS_PER_STATEMENT / paramsPerRow);
-
-            String group = "(" + String.join(" AND ", BatchSqlUtils.buildPkEqualsList(dialect, m, pkPropsList)) + ")";
-            String base = "DELETE FROM " + dialect.q(m.table) + " WHERE ";
-
-            int total = 0;
-            Iterator<T> it = entities.iterator();
-            while (it.hasNext()) {
-                List<T> chunk = new ArrayList<>(Math.min(maxGroupsPerStmt, entities.size()));
-                for (int i = 0; i < maxGroupsPerStmt && it.hasNext(); i++) chunk.add(it.next());
-
-                String sql = base + String.join(" OR ", Collections.nCopies(chunk.size(), group));
-                try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                    List<Object> params = new ArrayList<>(chunk.size() * pkArity);
-                    for (T e : chunk) {
-                        Map<String, Object> vals = ReflectionUtils.extractValues(e, m);
-                        for (String prop : pkPropsList) {
-                            Object v = vals.get(prop);
-                            if (v == null) throw new IllegalArgumentException("Entity primary key '" + prop + "' is null");
-                            params.add(v);
-                        }
-                    }
-                    JdbcParamBinder.bindParams(ps, params);
-                    total += ps.executeUpdate();
-                }
-            }
-            return total;
-        } catch (SQLException ex) {
-            throw new RuntimeException("deleteAll failed", ex);
-        }
-    }
+    // Package-private accessors for internal components
 
     /**
-     * Dialect-quoted identifier utility for Query et al.
+     * Quotes an identifier using the current SQL dialect's quoting rules.
+     * This method is used internally for generating SQL statements.
+     *
+     * @param ident the identifier to quote
+     * @return the quoted identifier
      */
     String q(String ident) {
         return dialect.q(ident);
-    } /* package-private access for Query */
+    }
 
-    Connection conn() {
+    /**
+     * Returns the underlying JDBC connection.
+     * This method provides access to the connection for internal operations.
+     *
+     * @return the JDBC connection
+     */
+    public Connection conn() {
         return connection;
     }
 
-    SqlDialect dialect() {
+    /**
+     * Returns the SQL dialect instance.
+     * This method provides access to dialect-specific functionality.
+     *
+     * @return the SQL dialect
+     */
+    public SqlDialect dialect() {
         return dialect;
     }
 
-    MappingRegistry mappingRegistry() {
+    /**
+     * Returns the mapping registry containing entity-to-table mappings.
+     * This method provides access to the mapping configuration.
+     *
+     * @return the mapping registry
+     */
+    public MappingRegistry mappingRegistry() {
         return mappingRegistry;
+    }
+
+    /**
+     * Ensures the entity model has been built.
+     * This method is used internally to trigger model building when needed.
+     */
+    public void ensureModelBuiltInternal() {
+        ensureModelBuilt();
+    }
+
+    // Lazy-loaded operation handlers
+
+    /** Lazy-loaded DDL operations handler */
+    private DbDdlOperations ddlOperations;
+
+    /** Lazy-loaded CRUD operations handler */
+    private DbCrudOperations crudOperations;
+
+    /** Lazy-loaded batch operations handler */
+    private DbBatchOperations batchOperations;
+
+    /** Lazy-loaded query executor */
+    private DbQueryExecutor queryExecutor;
+
+    /**
+     * Returns the DDL operations handler, creating it if necessary.
+     *
+     * @return the DDL operations handler
+     */
+    private DbDdlOperations getDdlOperations() {
+        if (ddlOperations == null) {
+            ddlOperations = new DbDdlOperations(this);
+        }
+        return ddlOperations;
+    }
+
+    /**
+     * Returns the CRUD operations handler, creating it if necessary.
+     *
+     * @return the CRUD operations handler
+     */
+    private DbCrudOperations getCrudOperations() {
+        if (crudOperations == null) {
+            crudOperations = new DbCrudOperations(this);
+        }
+        return crudOperations;
+    }
+
+    /**
+     * Returns the batch operations handler, creating it if necessary.
+     *
+     * @return the batch operations handler
+     */
+    private DbBatchOperations getBatchOperations() {
+        if (batchOperations == null) {
+            batchOperations = new DbBatchOperations(this);
+        }
+        return batchOperations;
+    }
+
+    /**
+     * Returns the query executor, creating it if necessary.
+     *
+     * @return the query executor
+     */
+    private DbQueryExecutor getQueryExecutor() {
+        if (queryExecutor == null) {
+            queryExecutor = new DbQueryExecutor(this);
+        }
+        return queryExecutor;
     }
 }
