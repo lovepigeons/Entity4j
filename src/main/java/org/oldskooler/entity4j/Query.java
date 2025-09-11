@@ -221,7 +221,7 @@ public class Query<T> {
         return String.join(", ", columns);
     }
 
-    /** Generic map projection (column label -> value). */
+    /** Generic map projection (column label to value). */
     public List<Map<String,Object>> toMapList() {
         String sql = buildSelectSql();
         return ctx.executeQueryMap(sql, params);
@@ -314,7 +314,7 @@ public class Query<T> {
     }
 
 
-    /** DELETE FROM {table} WHERE <built via filter(...)> */
+    /** DELETE FROM {table} WHERE (built via filter(...)) */
     public int delete() {
         if (where.length() == 0) throw new IllegalArgumentException("WHERE must not be empty for delete()");
 
