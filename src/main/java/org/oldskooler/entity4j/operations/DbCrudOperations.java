@@ -37,6 +37,12 @@ public class DbCrudOperations {
             for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
                 String prop = e.getKey();
                 if (autoPkProps.contains(prop)) continue;
+
+                // Skip if value is the default for its Java type
+                if (isDefaultJavaValue(m.propToField.get(prop), values.get(prop))) {
+                    continue;
+                }
+
                 cols.add(e.getValue()); // unquoted; dialect will quote
                 params.add(values.get(prop));
             }
@@ -78,6 +84,43 @@ public class DbCrudOperations {
         } catch (SQLException e) {
             throw new RuntimeException("insert failed", e);
         }
+    }
+
+    private boolean isDefaultJavaValue(Field field, Object value) {
+        Class<?> type = field.getType();
+
+        if (value == null) {
+            // For primitives, null means we treat it as default
+            return true;
+        }
+
+        if (type == boolean.class || type == Boolean.class) {
+            return Boolean.FALSE.equals(value);
+        }
+        if (type == byte.class || type == Byte.class) {
+            return ((Byte) value) == 0;
+        }
+        if (type == short.class || type == Short.class) {
+            return ((Short) value) == 0;
+        }
+        if (type == int.class || type == Integer.class) {
+            return ((Integer) value) == 0;
+        }
+        if (type == long.class || type == Long.class) {
+            return ((Long) value) == 0L;
+        }
+        if (type == float.class || type == Float.class) {
+            return ((Float) value) == 0f;
+        }
+        if (type == double.class || type == Double.class) {
+            return ((Double) value) == 0d;
+        }
+        if (type == char.class || type == Character.class) {
+            return ((Character) value) == '\u0000'; // default char
+        }
+
+        // For String and all other reference types, only null is default.
+        return false;
     }
 
     public <T> int update(T entity) {
