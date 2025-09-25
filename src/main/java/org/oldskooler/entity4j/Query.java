@@ -330,11 +330,12 @@ public class Query<T> {
     }
 
     public long count() {
-        if (where.length() == 0) {
-            throw new IllegalArgumentException("WHERE must not be empty for count()");
-        }
+        String sql = "SELECT COUNT(*) FROM " + ctx.q(meta.table);
 
-        String sql = "SELECT COUNT(*) FROM " + ctx.q(meta.table) + " WHERE " + where;
+        // Only append WHERE if conditions exist
+        if (where.length() > 0) {
+            sql += " WHERE " + where;
+        }
 
         try (PreparedStatement ps = ctx.conn().prepareStatement(sql)) {
             JdbcParamBinder.bindParams(ps, params);
@@ -348,7 +349,6 @@ public class Query<T> {
             throw new RuntimeException("count failed: " + sql, e);
         }
     }
-
 
     public String updateSql(Consumer<SetBuilder<T>> setter) {
         if (setter == null) throw new IllegalArgumentException("setter is required");
