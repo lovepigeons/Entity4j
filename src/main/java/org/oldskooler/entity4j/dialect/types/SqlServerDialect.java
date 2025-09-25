@@ -47,14 +47,18 @@ public class SqlServerDialect implements SqlDialect {
             Field f     = m.propToField.get(prop);
 
             boolean nullable = true;
+            String defaultValue = "";
+
             Column colAnn = f.getAnnotation(Column.class);
             if (colAnn == null) {
                 if (m.columns.containsKey(col)) {
                     ColumnMeta meta = m.columns.get(col);
                     nullable = meta.nullable;
+                    defaultValue = meta.value;
                 }
             } else {
                 nullable = colAnn.nullable();
+                defaultValue = colAnn.value();
             }
 
             String baseType = resolveSqlType(m, f, col);
@@ -63,7 +67,7 @@ public class SqlServerDialect implements SqlDialect {
             StringBuilder d = new StringBuilder(q(col)).append(' ').append(baseType);
             if (auto) d.append(autoIncrementClause()); // IDENTITY(1,1)
             if (!nullable) d.append(" NOT NULL");
-
+            if (defaultValue != null && !defaultValue.isEmpty()) d.append(" DEFAULT '" + defaultValue + "'");
             defs.add(d.toString());
         }
 

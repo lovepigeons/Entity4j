@@ -23,9 +23,6 @@ public @interface Column {
     /** For DECIMAL/NUMERIC types. Only used if precision() is greater than 0. */
     int scale() default 0;
 
-    /**
-     * Full column definition override (e.g. "NUMERIC(20,6) NOT NULL").
-     * If set, it takes precedence over type/length/precision/scale/nullable.
-     */
-    String definition() default "";
+    /** Default column value **/
+    String value() default "";
 }
