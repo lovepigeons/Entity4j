@@ -52,14 +52,18 @@ public class SqliteDialect implements SqlDialect {
 
             // nullability
             boolean nullable = true;
+            String defaultValue = "";
+
             Column colAnn = f.getAnnotation(Column.class);
             if (colAnn == null) {
                 if (m.columns.containsKey(col)) {
                     ColumnMeta meta = m.columns.get(col);
                     nullable = meta.nullable;
+                    defaultValue = meta.value;
                 }
             } else {
                 nullable = colAnn.nullable();
+                defaultValue = colAnn.value();
             }
 
             // Base type inference for SQLite
@@ -77,6 +81,7 @@ public class SqliteDialect implements SqlDialect {
             // Normal column
             StringBuilder d = new StringBuilder(q(col)).append(' ').append(baseType);
             if (!nullable) d.append(" NOT NULL");
+            if (defaultValue != null && !defaultValue.isEmpty()) d.append(" DEFAULT '" + defaultValue + "'");
             defs.add(d.toString());
         }
 

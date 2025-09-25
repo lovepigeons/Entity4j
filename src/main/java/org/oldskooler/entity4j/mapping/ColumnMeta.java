@@ -7,15 +7,17 @@ public final class ColumnMeta {
     public final String property;   // entity field name
     public final String name;       // db column name (unquoted)
     public final boolean nullable;  // default true
+    public final String value;     // default value
     public final String type;       // explicit SQL type override (e.g. VARCHAR, DECIMAL, JSONB)
     public final int precision;     // for DECIMAL/NUMERIC; 0 means "unspecified"
     public final int scale;         // for DECIMAL/NUMERIC; only used if precision > 0
     public final int length;
 
-    public ColumnMeta(String property, String name, boolean nullable, String type, int precision, int scale, int length) {
+    public ColumnMeta(String property, String name, boolean nullable, String value, String type, int precision, int scale, int length) {
         this.property = Objects.requireNonNull(property, "property");
         this.name = Objects.requireNonNull(name, "name");
         this.nullable = nullable;
+        this.value = value;
         this.type = type == null ? "" : type;
         this.precision = precision;
         this.scale = scale;
