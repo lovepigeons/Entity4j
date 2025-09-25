@@ -12,6 +12,7 @@ import org.oldskooler.entity4j.util.ReflectionUtils;
 
 import java.lang.reflect.Field;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.function.Consumer;
@@ -327,6 +328,27 @@ public class Query<T> {
             throw new RuntimeException("delete failed: " + sql, e);
         }
     }
+
+    public long count() {
+        if (where.length() == 0) {
+            throw new IllegalArgumentException("WHERE must not be empty for count()");
+        }
+
+        String sql = "SELECT COUNT(*) FROM " + ctx.q(meta.table) + " WHERE " + where;
+
+        try (PreparedStatement ps = ctx.conn().prepareStatement(sql)) {
+            JdbcParamBinder.bindParams(ps, params);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getLong(1);
+            } else {
+                return 0L; // no rows matched
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("count failed: " + sql, e);
+        }
+    }
+
 
     public String updateSql(Consumer<SetBuilder<T>> setter) {
         if (setter == null) throw new IllegalArgumentException("setter is required");
