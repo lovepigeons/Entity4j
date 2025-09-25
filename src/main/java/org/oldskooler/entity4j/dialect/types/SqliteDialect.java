@@ -63,7 +63,7 @@ public class SqliteDialect implements SqlDialect {
                 }
             } else {
                 nullable = colAnn.nullable();
-                defaultValue = colAnn.value();
+                defaultValue = colAnn.defaultValue();
             }
 
             // Base type inference for SQLite

@@ -24,5 +24,5 @@ public @interface Column {
     int scale() default 0;
 
     /** Default column value **/
-    String value() default "";
+    String defaultValue() default "";
 }

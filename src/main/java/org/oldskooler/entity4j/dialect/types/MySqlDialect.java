@@ -52,7 +52,7 @@ public class MySqlDialect implements SqlDialect {
                 }
             } else {
                 nullable = colAnn.nullable();
-                defaultValue = colAnn.value();
+                defaultValue = colAnn.defaultValue();
             }
 
             String type = resolveSqlType(m, f, col);
