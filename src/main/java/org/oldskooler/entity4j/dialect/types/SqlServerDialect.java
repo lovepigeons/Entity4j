@@ -58,7 +58,7 @@ public class SqlServerDialect implements SqlDialect {
                 }
             } else {
                 nullable = colAnn.nullable();
-                defaultValue = colAnn.value();
+                defaultValue = colAnn.defaultValue();
             }
 
             String baseType = resolveSqlType(m, f, col);

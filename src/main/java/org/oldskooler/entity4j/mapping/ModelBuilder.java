@@ -22,6 +22,7 @@ public final class ModelBuilder {
         ColumnOptions scale(int s);                // for DECIMAL/NUMERIC
         ColumnMeta toMeta();
         ColumnOptions length(int i);
+        ColumnOptions value(String s);
     }
 
     static final class ColumnBuilder implements ColumnOptions {
@@ -32,6 +33,7 @@ public final class ModelBuilder {
         int precision = 0;
         int scale = 0;
         int length = -1;
+        String value = "";
 
         ColumnBuilder(String property) {
             this.property = property;
@@ -42,10 +44,11 @@ public final class ModelBuilder {
         @Override public ColumnOptions type(String t) { this.type = t; return this; }
         @Override public ColumnOptions precision(int p) { this.precision = p; return this; }
         @Override public ColumnOptions scale(int s) { this.scale = s; return this; }
+        @Override public ColumnOptions value(String s) { this.value = s; return this; }
 
         @Override
         public ColumnMeta toMeta() {
-            return new ColumnMeta(property, name, nullable, type, precision, scale, length);
+            return new ColumnMeta(property, name, nullable, type, value, precision, scale, length);
         }
 
         @Override
