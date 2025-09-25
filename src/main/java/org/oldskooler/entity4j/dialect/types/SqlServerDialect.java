@@ -68,7 +68,7 @@ public class SqlServerDialect implements SqlDialect {
             if (auto) d.append(autoIncrementClause()); // IDENTITY(1,1)
             if (!nullable) d.append(" NOT NULL");
             if (!Column.DEFAULT_NONE.equals(defaultValue)) {
-                d.append(" DEFAULT '").append(defaultValue).append("'");
+                d.append(" DEFAULT ").append(defaultValue).append("");
             }
             defs.add(d.toString());
         }

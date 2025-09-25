@@ -82,7 +82,7 @@ public class SqliteDialect implements SqlDialect {
             StringBuilder d = new StringBuilder(q(col)).append(' ').append(baseType);
             if (!nullable) d.append(" NOT NULL");
             if (!Column.DEFAULT_NONE.equals(defaultValue)) {
-                d.append(" DEFAULT '").append(defaultValue).append("'");
+                d.append(" DEFAULT ").append(defaultValue).append("");
             }
             defs.add(d.toString());
         }
