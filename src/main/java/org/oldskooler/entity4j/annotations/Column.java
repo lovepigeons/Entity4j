@@ -5,6 +5,8 @@ import java.lang.annotation.*;
 @Target(ElementType.FIELD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Column {
+    String DEFAULT_NONE = "\u0000";   // sentinel
+
     /** Override column name. */
     String name() default "";
 
@@ -24,5 +26,6 @@ public @interface Column {
     int scale() default 0;
 
     /** Default column value **/
-    String defaultValue() default "";
+    String defaultValue() default DEFAULT_NONE;
+
 }
