@@ -27,7 +27,7 @@ public final class BatchSqlUtils {
         return sql;
     }
 
-    public static <T> void collectInsertParams(T entity, TableMeta<T> m, List<String> cols, List<Object> out) {
+    public static <T> void collectInsertParams(T entity, TableMeta<T> m, List<String> cols, List<Object> out) throws IllegalAccessException {
         Map<String, Object> vals = ReflectionUtils.extractValues(entity, m);
         for (String col : cols) {
             String prop = findPropByColumn(m, col);

@@ -5,6 +5,8 @@ package org.oldskooler.entity4j.select;
 import org.oldskooler.entity4j.functions.SFunction;
 import org.oldskooler.entity4j.util.LambdaUtils;
 
+import java.lang.reflect.InvocationTargetException;
+
 public final class SelectionPart {
     public enum Kind {COLUMN, STAR}
 
@@ -23,7 +25,7 @@ public final class SelectionPart {
     }
 
 
-    public static <T, R> SelectionPart forGetter(Class<?> entityType, SFunction<T, R> getter, String alias) {
+    public static <T, R> SelectionPart forGetter(Class<?> entityType, SFunction<T, R> getter, String alias) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         String prop = LambdaUtils.propertyName(getter); // reuse existing lambda->property util
         return new SelectionPart(Kind.COLUMN, entityType, prop, alias);
 

@@ -11,6 +11,7 @@ import org.oldskooler.entity4j.operations.DbDdlOperations;
 import org.oldskooler.entity4j.operations.DbQueryExecutor;
 import org.oldskooler.entity4j.util.*;
 
+import java.lang.reflect.InvocationTargetException;
 import java.sql.*;
 import java.util.*;
 
@@ -167,7 +168,7 @@ public abstract class IDbContext implements AutoCloseable {
      * @param type the class of the entity
      * @return the number of statements executed (typically 1)
      */
-    public <T> int createTable(Class<T> type) {
+    public <T> int createTable(Class<T> type) throws SQLException {
         return getDdlOperations().createTable(type);
     }
 
@@ -177,7 +178,7 @@ public abstract class IDbContext implements AutoCloseable {
      * @param types the classes of the entities
      * @return the total number of statements executed
      */
-    public int createTables(Class<?>... types) {
+    public int createTables(Class<?>... types) throws SQLException {
         return getDdlOperations().createTables(types);
     }
 
@@ -188,7 +189,7 @@ public abstract class IDbContext implements AutoCloseable {
      * @param type the class of the entity
      * @return the number of statements executed (typically 1 if table existed, 0 otherwise)
      */
-    public <T> int dropTableIfExists(Class<T> type) {
+    public <T> int dropTableIfExists(Class<T> type) throws SQLException {
         return getDdlOperations().dropTableIfExists(type);
     }
 
@@ -201,7 +202,7 @@ public abstract class IDbContext implements AutoCloseable {
      * @param entity the entity to insert
      * @return the number of rows affected (typically 1)
      */
-    public <T> int insert(T entity) {
+    public <T> int insert(T entity) throws SQLException, IllegalAccessException {
         return getCrudOperations().insert(entity);
     }
 
@@ -212,7 +213,7 @@ public abstract class IDbContext implements AutoCloseable {
      * @param entity the entity to update
      * @return the number of rows affected (typically 1)
      */
-    public <T> int update(T entity) {
+    public <T> int update(T entity) throws SQLException, IllegalAccessException {
         return getCrudOperations().update(entity);
     }
 
@@ -223,7 +224,7 @@ public abstract class IDbContext implements AutoCloseable {
      * @param entity the entity to delete
      * @return the number of rows affected (typically 1)
      */
-    public <T> int delete(T entity) {
+    public <T> int delete(T entity) throws SQLException, IllegalAccessException {
         return getCrudOperations().delete(entity);
     }
 
@@ -237,7 +238,7 @@ public abstract class IDbContext implements AutoCloseable {
      * @param entities the collection of entities to insert
      * @return the total number of rows affected
      */
-    public <T> int insertAll(Collection<T> entities) {
+    public <T> int insertAll(Collection<T> entities) throws SQLException, IllegalAccessException {
         return getBatchOperations().insertAll(entities);
     }
 
@@ -249,7 +250,7 @@ public abstract class IDbContext implements AutoCloseable {
      * @param entities the collection of entities to update
      * @return the total number of rows affected
      */
-    public <T> int updateAll(Collection<T> entities) {
+    public <T> int updateAll(Collection<T> entities) throws SQLException, IllegalAccessException {
         return getBatchOperations().updateAll(entities);
     }
 
@@ -261,7 +262,7 @@ public abstract class IDbContext implements AutoCloseable {
      * @param entities the collection of entities to delete
      * @return the total number of rows affected
      */
-    public <T> int deleteAll(Collection<T> entities) {
+    public <T> int deleteAll(Collection<T> entities) throws SQLException, IllegalAccessException {
         return getBatchOperations().deleteAll(entities);
     }
 
@@ -277,7 +278,7 @@ public abstract class IDbContext implements AutoCloseable {
      * @param params the parameters for the query
      * @return a list of entity instances
      */
-    <T> List<T> executeQuery(TableMeta<T> m, String sql, List<Object> params) {
+    <T> List<T> executeQuery(TableMeta<T> m, String sql, List<Object> params) throws SQLException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         return getQueryExecutor().executeQuery(m, sql, params);
     }
 
@@ -289,23 +290,17 @@ public abstract class IDbContext implements AutoCloseable {
      * @param params the parameters for the query
      * @return a list of maps containing column name-value pairs
      */
-    List<Map<String, Object>> executeQueryMap(String sql, List<Object> params) {
+    List<Map<String, Object>> executeQueryMap(String sql, List<Object> params) throws SQLException {
         return getQueryExecutor().executeQueryMap(sql, params);
     }
 
     /**
      * Closes the underlying database connection.
      * This method is called automatically when using try-with-resources.
-     *
-     * @throws RuntimeException if a SQLException occurs while closing the connection
      */
     @Override
-    public void close() throws RuntimeException {
-        try {
+    public void close() throws SQLException {
             if (connection != null && !connection.isClosed()) connection.close();
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     // Package-private accessors for internal components

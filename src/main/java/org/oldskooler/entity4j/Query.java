@@ -11,6 +11,7 @@ import org.oldskooler.entity4j.util.LambdaUtils;
 import org.oldskooler.entity4j.util.ReflectionUtils;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -67,24 +68,24 @@ public class Query<T> {
     }
 
     /** Backwards-compatible single-column ORDER BY on base table. */
-    public Query<T> orderBy(SFunction<T, ?> getter, boolean asc) {
+    public Query<T> orderBy(SFunction<T, ?> getter, boolean asc) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         orderBys.add(qualify(meta, getter, asc));
         return this;
     }
 
     /** Add another ORDER BY on base table (same as calling orderBy again). */
-    public Query<T> thenBy(SFunction<T, ?> getter, boolean asc) {
+    public Query<T> thenBy(SFunction<T, ?> getter, boolean asc) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         return orderBy(getter, asc);
     }
 
     /** ORDER BY using a getter from a joined type. */
-    public <J> Query<T> orderBy(Class<J> type, SFunction<J, ?> getter, boolean asc) {
+    public <J> Query<T> orderBy(Class<J> type, SFunction<J, ?> getter, boolean asc) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         orderBys.add(qualify(getMeta(type), getter, asc));
         return this;
     }
 
     /** Add another ORDER BY using a joined type. */
-    public <J> Query<T> thenBy(Class<J> type, SFunction<J, ?> getter, boolean asc) {
+    public <J> Query<T> thenBy(Class<J> type, SFunction<J, ?> getter, boolean asc) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         return orderBy(type, getter, asc);
     }
 
@@ -140,12 +141,12 @@ public class Query<T> {
         return out.toString();
     }
 
-    public java.util.List<T> toList() {
+    public java.util.List<T> toList() throws SQLException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         String sql = buildSelectSql();
         return ctx.executeQuery(meta, sql, params);
     }
 
-    public java.util.Optional<T> first() {
+    public java.util.Optional<T> first() throws SQLException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         this.limit = (this.limit == null || this.limit > 1) ? 1 : this.limit;
         java.util.List<T> xs = toList();
         return xs.isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(xs.get(0));
@@ -223,13 +224,13 @@ public class Query<T> {
     }
 
     /** Generic map projection (column label to value). */
-    public List<Map<String,Object>> toMapList() {
+    public List<Map<String,Object>> toMapList() throws SQLException {
         String sql = buildSelectSql();
         return ctx.executeQueryMap(sql, params);
     }
 
     /** DTO projection via setters matching column labels (use AS to control labels). */
-    public <R> List<R> toList(Class<R> dtoType) {
+    public <R> List<R> toList(Class<R> dtoType) throws NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException, SQLException {
         String sql = buildSelectSql();
 
         TableMeta<R> tempMeta = TableMeta.of(dtoType, this.ctx.mappingRegistry());
@@ -237,58 +238,38 @@ public class Query<T> {
 
         List<R> result = new ArrayList<>();
         for (Map<String, Object> row : rs) {
-            try {
-                R dto = dtoType.getDeclaredConstructor().newInstance();
+            R dto = dtoType.getDeclaredConstructor().newInstance();
 
-                for (Map.Entry<String, Object> entry : row.entrySet()) {
-                    String column = entry.getKey();
-                    Optional<String> property = tempMeta.propToColumn.entrySet().stream().filter(x -> x.getValue().equals(column)).map(Map.Entry::getKey).findFirst();
-                    Object value = entry.getValue();
+            for (Map.Entry<String, Object> entry : row.entrySet()) {
+                String column = entry.getKey();
+                Optional<String> property = tempMeta.propToColumn.entrySet().stream().filter(x -> x.getValue().equals(column)).map(Map.Entry::getKey).findFirst();
+                Object value = entry.getValue();
 
-                    if (property.isPresent()) {
-                        if (tempMeta.propToField.containsKey(property.get())) {
-                            try {
-                                Field field = tempMeta.propToField.get(property.get());
+                if (property.isPresent()) {
+                    if (tempMeta.propToField.containsKey(property.get())) {
+                        try {
+                            Field field = tempMeta.propToField.get(property.get());
 
-                                if (field == null) {
-                                    field = dtoType.getDeclaredField(column);
-                                }
-
-                                ReflectionUtils.setField(dto, field, value);
-                            } catch (NoSuchFieldException e) {
-                                // If no matching field exists in the DTO, just ignore
+                            if (field == null) {
+                                field = dtoType.getDeclaredField(column);
                             }
+
+                            ReflectionUtils.setField(dto, field, value);
+                        } catch (NoSuchFieldException e) {
+                            // If no matching field exists in the DTO, just ignore
                         }
                     }
-
-                    /*
-                    try {
-                        Field field = Arrays.stream(dtoType.getDeclaredFields())
-                                .filter(x -> x.getAnnotation(Column.class) != null
-                                        && x.getAnnotation(Column.class).name().equals(column))
-                                .findFirst()
-                                .orElse(null);
-
-                        if (field == null) {
-                            field = dtoType.getDeclaredField(column);
-                        }
-
-                        ReflectionUtils.setField(dto, field, value);
-                    } catch (NoSuchFieldException e) {
-                        // If no matching field exists in the DTO, just ignore
-                    }*/
                 }
-
-                result.add(dto);
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to map row to DTO", e);
             }
+
+            result.add(dto);
+
         }
 
         return result;
     }
 
-    public int update(Consumer<SetBuilder<T>> setter) {
+    public int update(Consumer<SetBuilder<T>> setter) throws SQLException {
         if (setter == null) throw new IllegalArgumentException("setter is required");
         if (where.length() == 0) throw new IllegalArgumentException("WHERE must not be empty for update()");
 
@@ -309,14 +290,12 @@ public class Query<T> {
         try (PreparedStatement ps = ctx.conn().prepareStatement(sql)) {
             JdbcParamBinder.bindParams(ps, all);
             return ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new RuntimeException("update failed: " + sql, e);
         }
     }
 
 
     /** DELETE FROM {table} WHERE (built via filter(...)) */
-    public int delete() {
+    public int delete() throws SQLException {
         if (where.length() == 0) throw new IllegalArgumentException("WHERE must not be empty for delete()");
 
         String sql = "DELETE FROM " + ctx.q(meta.table) + " WHERE " + where;
@@ -324,12 +303,10 @@ public class Query<T> {
         try (PreparedStatement ps = ctx.conn().prepareStatement(sql)) {
             JdbcParamBinder.bindParams(ps, params);
             return ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new RuntimeException("delete failed: " + sql, e);
         }
     }
 
-    public long count() {
+    public long count() throws SQLException {
         String sql = "SELECT COUNT(*) FROM " + ctx.q(meta.table);
 
         // Only append WHERE if conditions exist
@@ -345,8 +322,6 @@ public class Query<T> {
             } else {
                 return 0L; // no rows matched
             }
-        } catch (SQLException e) {
-            throw new RuntimeException("count failed: " + sql, e);
         }
     }
 
@@ -410,7 +385,7 @@ public class Query<T> {
     }
 
     // Turn getter into "alias.col ASC/DESC"
-    private <X> String qualify(TableMeta<X> m, SFunction<X, ?> getter, boolean asc) {
+    private <X> String qualify(TableMeta<X> m, SFunction<X, ?> getter, boolean asc) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         String prop = LambdaUtils.propertyName(getter);
         String col = m.propToColumn.getOrDefault(prop, Names.defaultColumnName(prop));
         String alias = getAlias(m.type);
@@ -477,7 +452,7 @@ public class Query<T> {
         private final TableMeta<T> meta;
         Filters(Query<T> q, TableMeta<T> meta) { this.q = q; this.meta = meta; }
 
-        private String baseCol(SFunction<T, ?> getter) {
+        private String baseCol(SFunction<T, ?> getter) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
             String prop = LambdaUtils.propertyName(getter);
             String col = meta.propToColumn.getOrDefault(prop, Names.defaultColumnName(prop));
             String alias = q.baseAlias;
@@ -485,24 +460,24 @@ public class Query<T> {
         }
 
         // Base-table filters (backwards-compatible)
-        public Filters<T> equals(SFunction<T, ?> getter, Object value) { q.appendCondition(baseCol(getter), "=", value); return this; }
-        public Filters<T> notEquals(SFunction<T, ?> getter, Object value) { q.appendCondition(baseCol(getter), "<>", value); return this; }
-        public Filters<T> greater(SFunction<T, ?> getter, Object value) { q.appendCondition(baseCol(getter), ">", value); return this; }
-        public Filters<T> greaterOrEquals(SFunction<T, ?> getter, Object value) { q.appendCondition(baseCol(getter), ">=", value); return this; }
-        public Filters<T> less(SFunction<T, ?> getter, Object value) { q.appendCondition(baseCol(getter), "<", value); return this; }
-        public Filters<T> lessOrEquals(SFunction<T, ?> getter, Object value) { q.appendCondition(baseCol(getter), "<=", value); return this; }
-        public Filters<T> like(SFunction<T, ?> getter, String pattern) { q.appendCondition(baseCol(getter), "LIKE", pattern); return this; }
-        public Filters<T> in(SFunction<T, ?> getter, java.util.Collection<?> values) { q.appendCondition(baseCol(getter), "IN", new java.util.ArrayList<>(values)); return this; }
+        public Filters<T> equals(SFunction<T, ?> getter, Object value) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { q.appendCondition(baseCol(getter), "=", value); return this; }
+        public Filters<T> notEquals(SFunction<T, ?> getter, Object value) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { q.appendCondition(baseCol(getter), "<>", value); return this; }
+        public Filters<T> greater(SFunction<T, ?> getter, Object value) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { q.appendCondition(baseCol(getter), ">", value); return this; }
+        public Filters<T> greaterOrEquals(SFunction<T, ?> getter, Object value) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { q.appendCondition(baseCol(getter), ">=", value); return this; }
+        public Filters<T> less(SFunction<T, ?> getter, Object value) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { q.appendCondition(baseCol(getter), "<", value); return this; }
+        public Filters<T> lessOrEquals(SFunction<T, ?> getter, Object value) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { q.appendCondition(baseCol(getter), "<=", value); return this; }
+        public Filters<T> like(SFunction<T, ?> getter, String pattern) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { q.appendCondition(baseCol(getter), "LIKE", pattern); return this; }
+        public Filters<T> in(SFunction<T, ?> getter, java.util.Collection<?> values) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { q.appendCondition(baseCol(getter), "IN", new java.util.ArrayList<>(values)); return this; }
 
         // Typed filters for joined tables
-        public <J> Filters<T> equals(Class<J> type, SFunction<J, ?> getter, Object value) { return op(type, getter, "=", value); }
-        public <J> Filters<T> notEquals(Class<J> type, SFunction<J, ?> getter, Object value) { return op(type, getter, "<>", value); }
-        public <J> Filters<T> greater(Class<J> type, SFunction<J, ?> getter, Object value) { return op(type, getter, ">", value); }
-        public <J> Filters<T> greaterOrEquals(Class<J> type, SFunction<J, ?> getter, Object value) { return op(type, getter, ">=", value); }
-        public <J> Filters<T> less(Class<J> type, SFunction<J, ?> getter, Object value) { return op(type, getter, "<", value); }
-        public <J> Filters<T> lessOrEquals(Class<J> type, SFunction<J, ?> getter, Object value) { return op(type, getter, "<=", value); }
-        public <J> Filters<T> like(Class<J> type, SFunction<J, ?> getter, String pattern) { return op(type, getter, "LIKE", pattern); }
-        public <J> Filters<T> in(Class<J> type, SFunction<J, ?> getter, java.util.Collection<?> values) {
+        public <J> Filters<T> equals(Class<J> type, SFunction<J, ?> getter, Object value) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { return op(type, getter, "=", value); }
+        public <J> Filters<T> notEquals(Class<J> type, SFunction<J, ?> getter, Object value) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { return op(type, getter, "<>", value); }
+        public <J> Filters<T> greater(Class<J> type, SFunction<J, ?> getter, Object value) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { return op(type, getter, ">", value); }
+        public <J> Filters<T> greaterOrEquals(Class<J> type, SFunction<J, ?> getter, Object value) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { return op(type, getter, ">=", value); }
+        public <J> Filters<T> less(Class<J> type, SFunction<J, ?> getter, Object value) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { return op(type, getter, "<", value); }
+        public <J> Filters<T> lessOrEquals(Class<J> type, SFunction<J, ?> getter, Object value) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { return op(type, getter, "<=", value); }
+        public <J> Filters<T> like(Class<J> type, SFunction<J, ?> getter, String pattern) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { return op(type, getter, "LIKE", pattern); }
+        public <J> Filters<T> in(Class<J> type, SFunction<J, ?> getter, java.util.Collection<?> values) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
             String prop = LambdaUtils.propertyName(getter);
             TableMeta<J> m = q.getMeta(type);
             String col = m.propToColumn.getOrDefault(prop, Names.defaultColumnName(prop));
@@ -512,7 +487,7 @@ public class Query<T> {
             return this;
         }
 
-        private <J> Filters<T> op(Class<J> type, SFunction<J, ?> getter, String op, Object value) {
+        private <J> Filters<T> op(Class<J> type, SFunction<J, ?> getter, String op, Object value) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
             String prop = LambdaUtils.propertyName(getter);
             TableMeta<J> m = q.getMeta(type);
             String col = m.propToColumn.getOrDefault(prop, Names.defaultColumnName(prop));
@@ -545,12 +520,12 @@ public class Query<T> {
             this.q = q; this.a = a; this.b = b; this.bAlias = bAlias;
         }
 
-        public On<A, B> eq(SFunction<A, ?> left, SFunction<B, ?> right) { return bin(left, "=", right); }
-        public On<A, B> ne(SFunction<A, ?> left, SFunction<B, ?> right) { return bin(left, "<>", right); }
-        public On<A, B> gt(SFunction<A, ?> left, SFunction<B, ?> right) { return bin(left, ">", right); }
-        public On<A, B> lt(SFunction<A, ?> left, SFunction<B, ?> right) { return bin(left, "<", right); }
-        public On<A, B> ge(SFunction<A, ?> left, SFunction<B, ?> right) { return bin(left, ">=", right); }
-        public On<A, B> le(SFunction<A, ?> left, SFunction<B, ?> right) { return bin(left, "<=", right); }
+        public On<A, B> eq(SFunction<A, ?> left, SFunction<B, ?> right) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { return bin(left, "=", right); }
+        public On<A, B> ne(SFunction<A, ?> left, SFunction<B, ?> right) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { return bin(left, "<>", right); }
+        public On<A, B> gt(SFunction<A, ?> left, SFunction<B, ?> right) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { return bin(left, ">", right); }
+        public On<A, B> lt(SFunction<A, ?> left, SFunction<B, ?> right) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { return bin(left, "<", right); }
+        public On<A, B> ge(SFunction<A, ?> left, SFunction<B, ?> right) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { return bin(left, ">=", right); }
+        public On<A, B> le(SFunction<A, ?> left, SFunction<B, ?> right) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException { return bin(left, "<=", right); }
 
         // Allow chaining multiple predicates with AND/OR
         public On<A, B> and() { on.append(" AND "); return this; }
@@ -558,7 +533,7 @@ public class Query<T> {
         public On<A, B> open() { on.append('('); return this; }
         public On<A, B> close() { on.append(')'); return this; }
 
-        private On<A, B> bin(SFunction<A, ?> l, String op, SFunction<B, ?> r) {
+        private On<A, B> bin(SFunction<A, ?> l, String op, SFunction<B, ?> r) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
             if (needsAnd(on)) on.append(" AND ");
             on.append(col(a, q.getAlias(a.type), l))
                     .append(' ').append(op).append(' ')
@@ -572,7 +547,7 @@ public class Query<T> {
             return !(s.endsWith("(") || s.endsWith("AND") || s.endsWith("OR"));
         }
 
-        private <X> String col(TableMeta<X> m, String alias, SFunction<X, ?> g) {
+        private <X> String col(TableMeta<X> m, String alias, SFunction<X, ?> g) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
             String prop = LambdaUtils.propertyName(g);
             String col = m.propToColumn.getOrDefault(prop, Names.defaultColumnName(prop));
             String qa = (alias != null ? q.ctx.dialect().q(alias) + "." : "");

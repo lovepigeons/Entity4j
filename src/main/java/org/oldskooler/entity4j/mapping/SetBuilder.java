@@ -6,6 +6,7 @@ import org.oldskooler.entity4j.functions.SFunction;
 import org.oldskooler.entity4j.util.LambdaUtils;
 import org.oldskooler.entity4j.util.Names;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,7 +21,7 @@ public class SetBuilder<T> {
         this.meta = meta;
     }
 
-    public SetBuilder<T> set(SFunction<T, ?> getter, Object value) {
+    public SetBuilder<T> set(SFunction<T, ?> getter, Object value) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         String prop = LambdaUtils.propertyName(getter);
         String col  = meta.propToColumn.getOrDefault(prop, Names.defaultColumnName(prop));
         sets.add(this.dialect.q(col) + " = ?");

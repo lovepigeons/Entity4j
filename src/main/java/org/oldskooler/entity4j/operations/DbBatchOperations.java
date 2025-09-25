@@ -23,7 +23,7 @@ public class DbBatchOperations {
         this.context = context;
     }
 
-    public <T> int insertAll(Collection<T> entities) {
+    public <T> int insertAll(Collection<T> entities) throws SQLException, IllegalAccessException {
         if (entities == null || entities.isEmpty()) return 0;
 
         context.ensureModelBuiltInternal();
@@ -31,86 +31,83 @@ public class DbBatchOperations {
         Class<T> t = (Class<T>) entities.iterator().next().getClass();
         TableMeta<T> m = TableMeta.of(t, context.mappingRegistry());
 
-        try {
-            // Column order (excluding auto PK props)
-            Set<String> autoPkProps = PrimaryKeyUtils.getAutoPkProps(m);
-            List<String> cols = new ArrayList<>();
-            for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
-                if (autoPkProps.contains(e.getKey())) continue;
-                cols.add(e.getValue());
+        // Column order (excluding auto PK props)
+        Set<String> autoPkProps = PrimaryKeyUtils.getAutoPkProps(m);
+        List<String> cols = new ArrayList<>();
+        for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
+            if (autoPkProps.contains(e.getKey())) continue;
+            cols.add(e.getValue());
+        }
+
+        // Prepare chunks to keep params under limits
+        int paramsPerRow = cols.size();
+        if (paramsPerRow == 0) throw new IllegalStateException("No columns to insert");
+        int maxRowsPerStmt = Math.max(1, MAX_PARAMS_PER_STATEMENT / paramsPerRow);
+
+        int total = 0;
+        Iterator<T> it = entities.iterator();
+        while (it.hasNext()) {
+            List<T> chunk = new ArrayList<>(Math.min(maxRowsPerStmt, entities.size()));
+            for (int i = 0; i < maxRowsPerStmt && it.hasNext(); i++) {
+                chunk.add(it.next());
             }
 
-            // Prepare chunks to keep params under limits
-            int paramsPerRow = cols.size();
-            if (paramsPerRow == 0) throw new IllegalStateException("No columns to insert");
-            int maxRowsPerStmt = Math.max(1, MAX_PARAMS_PER_STATEMENT / paramsPerRow);
+            // Build single SQL: INSERT INTO t (c1,c2) VALUES (?,?),(?,?)...
+            String sql = BatchSqlUtils.buildMultiRowInsertSql(context.dialect(), m, cols, chunk.size());
 
-            int total = 0;
-            Iterator<T> it = entities.iterator();
-            while (it.hasNext()) {
-                List<T> chunk = new ArrayList<>(Math.min(maxRowsPerStmt, entities.size()));
-                for (int i = 0; i < maxRowsPerStmt && it.hasNext(); i++) {
-                    chunk.add(it.next());
-                }
+            // If dialect supports RETURNING and we have exactly one auto PK, keep it
+            Optional<Map.Entry<String, PrimaryKey>> singleAuto = PrimaryKeyUtils.getSingleAutoPk(m);
+            boolean wantsReturningIds = context.dialect().useInsertReturning() && singleAuto.isPresent();
 
-                // Build single SQL: INSERT INTO t (c1,c2) VALUES (?,?),(?,?)...
-                String sql = BatchSqlUtils.buildMultiRowInsertSql(context.dialect(), m, cols, chunk.size());
-
-                // If dialect supports RETURNING and we have exactly one auto PK, keep it
-                Optional<Map.Entry<String, PrimaryKey>> singleAuto = PrimaryKeyUtils.getSingleAutoPk(m);
-                boolean wantsReturningIds = context.dialect().useInsertReturning() && singleAuto.isPresent();
-
-                if (wantsReturningIds) {
-                    Field idField = m.propToField.get(singleAuto.get().getValue().property);
-                    try (PreparedStatement ps = context.conn().prepareStatement(sql)) {
-                        List<Object> params = new ArrayList<>(paramsPerRow * chunk.size());
+            if (wantsReturningIds) {
+                Field idField = m.propToField.get(singleAuto.get().getValue().property);
+                try (PreparedStatement ps = context.conn().prepareStatement(sql)) {
+                    List<Object> params = new ArrayList<>(paramsPerRow * chunk.size());
+                    for (T e : chunk) {
+                        BatchSqlUtils.collectInsertParams(e, m, cols, params);
+                    }
+                    JdbcParamBinder.bindParams(ps, params);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        int n = 0;
                         for (T e : chunk) {
-                            BatchSqlUtils.collectInsertParams(e, m, cols, params);
+                            if (!rs.next()) break;
+                            Object id = rs.getObject(1);
+                            ReflectionUtils.setField(e, idField, id);
+                            n++;
                         }
-                        JdbcParamBinder.bindParams(ps, params);
-                        try (ResultSet rs = ps.executeQuery()) {
-                            int n = 0;
+                        total += n;
+                    }
+                }
+            } else {
+                // Use generated keys (only assign back if exactly one auto PK)
+                try (PreparedStatement ps = context.conn().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+                    List<Object> params = new ArrayList<>(paramsPerRow * chunk.size());
+                    for (T e : chunk) {
+                        BatchSqlUtils.collectInsertParams(e, m, cols, params);
+                    }
+                    JdbcParamBinder.bindParams(ps, params);
+                    int n = ps.executeUpdate();
+                    total += n;
+
+                    Optional<Map.Entry<String, PrimaryKey>> singleAutoGk = PrimaryKeyUtils.getSingleAutoPk(m);
+                    if (singleAutoGk.isPresent()) {
+                        Field idField = m.propToField.get(singleAutoGk.get().getValue().property);
+                        try (ResultSet rs = ps.getGeneratedKeys()) {
                             for (T e : chunk) {
                                 if (!rs.next()) break;
                                 Object id = rs.getObject(1);
                                 ReflectionUtils.setField(e, idField, id);
-                                n++;
-                            }
-                            total += n;
-                        }
-                    }
-                } else {
-                    // Use generated keys (only assign back if exactly one auto PK)
-                    try (PreparedStatement ps = context.conn().prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-                        List<Object> params = new ArrayList<>(paramsPerRow * chunk.size());
-                        for (T e : chunk) {
-                            BatchSqlUtils.collectInsertParams(e, m, cols, params);
-                        }
-                        JdbcParamBinder.bindParams(ps, params);
-                        int n = ps.executeUpdate();
-                        total += n;
-
-                        Optional<Map.Entry<String, PrimaryKey>> singleAutoGk = PrimaryKeyUtils.getSingleAutoPk(m);
-                        if (singleAutoGk.isPresent()) {
-                            Field idField = m.propToField.get(singleAutoGk.get().getValue().property);
-                            try (ResultSet rs = ps.getGeneratedKeys()) {
-                                for (T e : chunk) {
-                                    if (!rs.next()) break;
-                                    Object id = rs.getObject(1);
-                                    ReflectionUtils.setField(e, idField, id);
-                                }
                             }
                         }
                     }
                 }
             }
-            return total;
-        } catch (SQLException ex) {
-            throw new RuntimeException("insertAll failed", ex);
         }
+        return total;
+
     }
 
-    public <T> int updateAll(Collection<T> entities) {
+    public <T> int updateAll(Collection<T> entities) throws SQLException, IllegalAccessException {
         if (entities == null || entities.isEmpty()) return 0;
 
         context.ensureModelBuiltInternal();
@@ -121,64 +118,60 @@ public class DbBatchOperations {
             throw new IllegalStateException("@Id required for batch update");
         }
 
-        try {
-            // Build SQL template
-            // SET c1=?,c2=?,... WHERE pk1=? AND pk2=? ...
-            Set<String> pkProps = m.keys.keySet();
-            List<String> sets = new ArrayList<>();
-            for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
-                String prop = e.getKey();
-                if (pkProps.contains(prop)) continue;
-                sets.add(context.dialect().q(e.getValue()) + " = ?");
-            }
-            List<String> where = new ArrayList<>();
-            for (String prop : pkProps) {
-                where.add(context.dialect().q(m.propToColumn.get(prop)) + " = ?");
-            }
-            String sql = "UPDATE " + context.dialect().q(m.table) + " SET " + String.join(", ", sets) +
-                    " WHERE " + String.join(" AND ", where);
-
-            int paramsPerRow = sets.size() + pkProps.size();
-            int maxRowsPerStmt = Math.max(1, MAX_PARAMS_PER_STATEMENT / paramsPerRow);
-
-            int total = 0;
-            Iterator<T> it = entities.iterator();
-            while (it.hasNext()) {
-                try (PreparedStatement ps = context.conn().prepareStatement(sql)) {
-                    int batched = 0;
-                    while (batched < maxRowsPerStmt && it.hasNext()) {
-                        T e = it.next();
-                        Map<String, Object> values = ReflectionUtils.extractValues(e, m);
-
-                        List<Object> params = new ArrayList<>(paramsPerRow);
-                        for (Map.Entry<String, String> col : m.propToColumn.entrySet()) {
-                            String prop = col.getKey();
-                            if (pkProps.contains(prop)) continue;
-                            params.add(values.get(prop));
-                        }
-                        for (String prop : pkProps) {
-                            Object idVal = values.get(prop);
-                            if (idVal == null) {
-                                throw new IllegalArgumentException("Entity primary key '" + prop + "' is null");
-                            }
-                            params.add(idVal);
-                        }
-
-                        JdbcParamBinder.bindParams(ps, params);
-                        ps.addBatch();
-                        batched++;
-                    }
-                    int[] counts = ps.executeBatch();
-                    total += BatchSqlUtils.sum(counts);
-                }
-            }
-            return total;
-        } catch (SQLException ex) {
-            throw new RuntimeException("updateAll failed", ex);
+        // Build SQL template
+        // SET c1=?,c2=?,... WHERE pk1=? AND pk2=? ...
+        Set<String> pkProps = m.keys.keySet();
+        List<String> sets = new ArrayList<>();
+        for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
+            String prop = e.getKey();
+            if (pkProps.contains(prop)) continue;
+            sets.add(context.dialect().q(e.getValue()) + " = ?");
         }
+        List<String> where = new ArrayList<>();
+        for (String prop : pkProps) {
+            where.add(context.dialect().q(m.propToColumn.get(prop)) + " = ?");
+        }
+        String sql = "UPDATE " + context.dialect().q(m.table) + " SET " + String.join(", ", sets) +
+                " WHERE " + String.join(" AND ", where);
+
+        int paramsPerRow = sets.size() + pkProps.size();
+        int maxRowsPerStmt = Math.max(1, MAX_PARAMS_PER_STATEMENT / paramsPerRow);
+
+        int total = 0;
+        Iterator<T> it = entities.iterator();
+        while (it.hasNext()) {
+            try (PreparedStatement ps = context.conn().prepareStatement(sql)) {
+                int batched = 0;
+                while (batched < maxRowsPerStmt && it.hasNext()) {
+                    T e = it.next();
+                    Map<String, Object> values = ReflectionUtils.extractValues(e, m);
+
+                    List<Object> params = new ArrayList<>(paramsPerRow);
+                    for (Map.Entry<String, String> col : m.propToColumn.entrySet()) {
+                        String prop = col.getKey();
+                        if (pkProps.contains(prop)) continue;
+                        params.add(values.get(prop));
+                    }
+                    for (String prop : pkProps) {
+                        Object idVal = values.get(prop);
+                        if (idVal == null) {
+                            throw new IllegalArgumentException("Entity primary key '" + prop + "' is null");
+                        }
+                        params.add(idVal);
+                    }
+
+                    JdbcParamBinder.bindParams(ps, params);
+                    ps.addBatch();
+                    batched++;
+                }
+                int[] counts = ps.executeBatch();
+                total += BatchSqlUtils.sum(counts);
+            }
+        }
+        return total;
     }
 
-    public <T> int deleteAll(Collection<T> entities) {
+    public <T> int deleteAll(Collection<T> entities) throws SQLException, IllegalAccessException {
         if (entities == null || entities.isEmpty()) return 0;
 
         context.ensureModelBuiltInternal();
@@ -189,22 +182,18 @@ public class DbBatchOperations {
             throw new IllegalStateException("@Id required for batch delete");
         }
 
-        try {
-            List<String> pkPropsList = new ArrayList<>(m.keys.keySet());
+        List<String> pkPropsList = new ArrayList<>(m.keys.keySet());
 
-            // Single-column PK: fast path with IN (...)
-            if (pkPropsList.size() == 1) {
-                return deleteBySinglePrimaryKey(entities, m, pkPropsList.get(0));
-            }
-
-            // Composite PK: build OR of (k1=? AND k2=? ...) groups, chunked
-            return deleteByCompositePrimaryKey(entities, m, pkPropsList);
-        } catch (SQLException ex) {
-            throw new RuntimeException("deleteAll failed", ex);
+        // Single-column PK: fast path with IN (...)
+        if (pkPropsList.size() == 1) {
+            return deleteBySinglePrimaryKey(entities, m, pkPropsList.get(0));
         }
+
+        // Composite PK: build OR of (k1=? AND k2=? ...) groups, chunked
+        return deleteByCompositePrimaryKey(entities, m, pkPropsList);
     }
 
-    private <T> int deleteBySinglePrimaryKey(Collection<T> entities, TableMeta<T> m, String prop) throws SQLException {
+    private <T> int deleteBySinglePrimaryKey(Collection<T> entities, TableMeta<T> m, String prop) throws SQLException, IllegalAccessException {
         String col = m.propToColumn.get(prop);
         String baseSql = "DELETE FROM " + context.dialect().q(m.table) + " WHERE " + context.dialect().q(col) + " IN ";
 
@@ -236,7 +225,7 @@ public class DbBatchOperations {
         return total;
     }
 
-    private <T> int deleteByCompositePrimaryKey(Collection<T> entities, TableMeta<T> m, List<String> pkPropsList) throws SQLException {
+    private <T> int deleteByCompositePrimaryKey(Collection<T> entities, TableMeta<T> m, List<String> pkPropsList) throws SQLException, IllegalAccessException {
         int pkArity = pkPropsList.size();
         int paramsPerRow = pkArity;
         int maxGroupsPerStmt = Math.max(1, MAX_PARAMS_PER_STATEMENT / paramsPerRow);

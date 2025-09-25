@@ -3,6 +3,7 @@ package org.oldskooler.entity4j.select;
 import org.oldskooler.entity4j.functions.SFunction;
 import org.oldskooler.entity4j.util.LambdaUtils;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
@@ -14,7 +15,7 @@ public final class Selector {
     /**
      * Column from root entity via getter reference.
      */
-    public <T, R> Selector col(SFunction<T, R> getter) {
+    public <T, R> Selector col(SFunction<T, R> getter) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         parts.add(SelectionPart.forGetter(null, getter, null));
         return this;
 
@@ -23,7 +24,7 @@ public final class Selector {
     /**
      * Column from a joined entity via getter reference.
      */
-    public <E, R> Selector col(Class<E> entity, SFunction<E, R> getter) {
+    public <E, R> Selector col(Class<E> entity, SFunction<E, R> getter) throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         parts.add(SelectionPart.forGetter(entity, getter, null));
         return this;
 

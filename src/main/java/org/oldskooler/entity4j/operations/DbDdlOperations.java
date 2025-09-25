@@ -29,17 +29,15 @@ public class DbDdlOperations {
         return context.dialect().dropTableDdl(m, ifExists && context.dialect().supportsDropIfExists());
     }
 
-    public <T> int createTable(Class<T> type) {
+    public <T> int createTable(Class<T> type) throws SQLException {
         context.ensureModelBuiltInternal();
         String sql = createTableSql(type, true);
         try (Statement st = context.conn().createStatement()) {
             return st.executeUpdate(sql);
-        } catch (SQLException e) {
-            throw new RuntimeException("createTable failed for " + type.getName() + ": " + sql, e);
         }
     }
 
-    public int createTables(Class<?>... types) {
+    public int createTables(Class<?>... types) throws SQLException {
         int total = 0;
         for (Class<?> t : types) {
             total += createTable(t);
@@ -47,13 +45,11 @@ public class DbDdlOperations {
         return total;
     }
 
-    public <T> int dropTableIfExists(Class<T> type) {
+    public <T> int dropTableIfExists(Class<T> type) throws SQLException {
         context.ensureModelBuiltInternal();
         String sql = dropTableSql(type, true);
         try (Statement st = context.conn().createStatement()) {
             return st.executeUpdate(sql);
-        } catch (SQLException e) {
-            throw new RuntimeException("dropTableIfExists failed for " + type.getName() + ": " + sql, e);
         }
     }
 }

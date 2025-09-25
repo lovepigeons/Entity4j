@@ -3,6 +3,7 @@ package org.oldskooler.entity4j.util;
 import org.oldskooler.entity4j.mapping.TableMeta;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -11,7 +12,7 @@ import java.util.*;
 public final class RowMapper {
     private RowMapper() {}
 
-    public static <T> List<T> mapAll(ResultSet rs, TableMeta<T> m) throws SQLException {
+    public static <T> List<T> mapAll(ResultSet rs, TableMeta<T> m) throws InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, SQLException {
         List<T> out = new ArrayList<>();
         while (rs.next()) out.add(mapRow(rs, m));
         return out;
@@ -34,8 +35,7 @@ public final class RowMapper {
         return out;
     }
 
-    private static <T> T mapRow(ResultSet rs, TableMeta<T> m) throws SQLException {
-        try {
+    private static <T> T mapRow(ResultSet rs, TableMeta<T> m) throws NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
             T inst = m.type.getDeclaredConstructor().newInstance();
             for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
                 String prop = e.getKey();
@@ -50,8 +50,5 @@ public final class RowMapper {
                 ReflectionUtils.setField(inst, f, dbVal);
             }
             return inst;
-        } catch (ReflectiveOperationException e) {
-            throw new RuntimeException(e);
-        }
     }
 }

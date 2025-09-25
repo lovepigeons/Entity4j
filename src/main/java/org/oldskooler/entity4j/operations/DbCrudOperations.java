@@ -21,13 +21,12 @@ public class DbCrudOperations {
         this.context = context;
     }
 
-    public <T> int insert(T entity) {
+    public <T> int insert(T entity) throws SQLException, IllegalAccessException {
         context.ensureModelBuiltInternal();
         @SuppressWarnings("unchecked")
         Class<T> type = (Class<T>) entity.getClass();
         TableMeta<T> m = TableMeta.of(type, context.mappingRegistry());
 
-        try {
             Map<String, Object> values = ReflectionUtils.extractValues(entity, m);
 
             // Build insert column list excluding auto PK properties
@@ -81,10 +80,7 @@ public class DbCrudOperations {
                 }
                 return n;
             }
-        } catch (SQLException e) {
-            throw new RuntimeException("insert failed", e);
         }
-    }
 
     private boolean isDefaultJavaValue(Field field, Object value) {
         Class<?> type = field.getType();
@@ -123,7 +119,7 @@ public class DbCrudOperations {
         return false;
     }
 
-    public <T> int update(T entity) {
+    public <T> int update(T entity) throws SQLException, IllegalAccessException {
         context.ensureModelBuiltInternal();
         @SuppressWarnings("unchecked")
         Class<T> t = (Class<T>) entity.getClass();
@@ -132,7 +128,6 @@ public class DbCrudOperations {
             throw new IllegalStateException("@Id required for update");
         }
 
-        try {
             Map<String, Object> values = ReflectionUtils.extractValues(entity, m);
 
             // SETs exclude all PK props
@@ -169,12 +164,9 @@ public class DbCrudOperations {
                 JdbcParamBinder.bindParams(ps, params);
                 return ps.executeUpdate();
             }
-        } catch (SQLException e) {
-            throw new RuntimeException("update failed", e);
-        }
     }
 
-    public <T> int delete(T entity) {
+    public <T> int delete(T entity) throws SQLException, IllegalAccessException {
         context.ensureModelBuiltInternal();
         @SuppressWarnings("unchecked")
         Class<T> t = (Class<T>) entity.getClass();
@@ -183,28 +175,24 @@ public class DbCrudOperations {
             throw new IllegalStateException("@Id required for delete");
         }
 
-        try {
-            Map<String, Object> values = ReflectionUtils.extractValues(entity, m);
+        Map<String, Object> values = ReflectionUtils.extractValues(entity, m);
 
-            List<String> where = new ArrayList<>();
-            List<Object> params = new ArrayList<>();
-            for (String prop : m.keys.keySet()) {
-                String col = m.propToColumn.get(prop);
-                Object v = values.get(prop);
-                if (v == null) {
-                    throw new IllegalArgumentException("Entity primary key '" + prop + "' is null");
-                }
-                where.add(context.dialect().q(col) + " = ?");
-                params.add(v);
+        List<String> where = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+        for (String prop : m.keys.keySet()) {
+            String col = m.propToColumn.get(prop);
+            Object v = values.get(prop);
+            if (v == null) {
+                throw new IllegalArgumentException("Entity primary key '" + prop + "' is null");
             }
+            where.add(context.dialect().q(col) + " = ?");
+            params.add(v);
+        }
 
-            String sql = "DELETE FROM " + context.dialect().q(m.table) + " WHERE " + String.join(" AND ", where);
-            try (PreparedStatement ps = context.conn().prepareStatement(sql)) {
-                JdbcParamBinder.bindParams(ps, params);
-                return ps.executeUpdate();
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("delete failed", e);
+        String sql = "DELETE FROM " + context.dialect().q(m.table) + " WHERE " + String.join(" AND ", where);
+        try (PreparedStatement ps = context.conn().prepareStatement(sql)) {
+            JdbcParamBinder.bindParams(ps, params);
+            return ps.executeUpdate();
         }
     }
 }
