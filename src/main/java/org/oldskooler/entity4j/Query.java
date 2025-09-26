@@ -493,6 +493,14 @@ public class Query<T> {
         public Filters<T> lessOrEquals(SFunction<T, ?> getter, Object value) { q.appendCondition(baseCol(getter), "<=", value); return this; }
         public Filters<T> like(SFunction<T, ?> getter, String pattern) { q.appendCondition(baseCol(getter), "LIKE", pattern); return this; }
         public Filters<T> in(SFunction<T, ?> getter, java.util.Collection<?> values) { q.appendCondition(baseCol(getter), "IN", new java.util.ArrayList<>(values)); return this; }
+        public Filters<T> equalsIgnoreCase(SFunction<T, ?> getter, String value) {
+            String col = baseCol(getter);
+            // Compare upper(column) = upper(?)
+            q.autoAndIfNeeded();
+            q.where.append("UPPER(").append(col).append(") = UPPER(?)");
+            q.params.add(value);
+            return this;
+        }
 
         // Typed filters for joined tables
         public <J> Filters<T> equals(Class<J> type, SFunction<J, ?> getter, Object value) { return op(type, getter, "=", value); }
@@ -509,6 +517,19 @@ public class Query<T> {
             String alias = q.getAlias(type);
             String qcol = (alias != null ? q.ctx.dialect().q(alias) + "." : "") + q.ctx.dialect().q(col);
             q.appendCondition(qcol, "IN", new java.util.ArrayList<>(values));
+            return this;
+        }
+
+        public <J> Filters<T> equalsIgnoreCase(Class<J> type, SFunction<J, ?> getter, String value) {
+            String prop = LambdaUtils.propertyName(getter);
+            TableMeta<J> m = q.getMeta(type);
+            String col = m.propToColumn.getOrDefault(prop, Names.defaultColumnName(prop));
+            String alias = q.getAlias(type);
+            String qcol = (alias != null ? q.ctx.dialect().q(alias) + "." : "") + q.ctx.dialect().q(col);
+
+            q.autoAndIfNeeded();
+            q.where.append("UPPER(").append(qcol).append(") = UPPER(?)");
+            q.params.add(value);
             return this;
         }
 
