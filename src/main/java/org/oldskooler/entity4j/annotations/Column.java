@@ -25,6 +25,8 @@ public @interface Column {
     /** For DECIMAL/NUMERIC types. Only used if precision() is greater than 0. */
     int scale() default 0;
 
+    boolean ignore() default false;
+
     /** Default column value **/
     String defaultValue() default DEFAULT_NONE;
 

@@ -42,17 +42,24 @@ public class MySqlDialect implements SqlDialect {
 
             boolean nullable = true;
             String defaultValue = "";
+            boolean ignored = false;
 
             Column colAnn = f.getAnnotation(Column.class);
             if (colAnn == null) {
                 if (m.columns.containsKey(col)) {
                     ColumnMeta meta = m.columns.get(col);
                     nullable = meta.nullable;
-                    defaultValue = meta.value;
+                    defaultValue = meta.defaultValue;
+                    ignored = meta.ignored;
                 }
             } else {
                 nullable = colAnn.nullable();
                 defaultValue = colAnn.defaultValue();
+                ignored = colAnn.ignore();
+            }
+
+            if (ignored) {
+                continue;
             }
 
             String type = resolveSqlType(m, f, col);

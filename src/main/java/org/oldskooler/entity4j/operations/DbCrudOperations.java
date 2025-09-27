@@ -36,7 +36,11 @@ public class DbCrudOperations {
             List<Object> params = new ArrayList<>();
             for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
                 String prop = e.getKey();
-                if (autoPkProps.contains(prop)) continue;
+                String column = e.getValue();
+
+                if (autoPkProps.contains(column)) continue;
+
+                if (m.columns.get(e.getValue()).ignored) continue;
 
                 // Skip if value is the default for its Java type
                 if (isDefaultJavaValue(m.propToField.get(prop), values.get(prop))) {
@@ -142,6 +146,11 @@ public class DbCrudOperations {
             for (Map.Entry<String, String> e : m.propToColumn.entrySet()) {
                 String prop = e.getKey();
                 if (pkProps.contains(prop)) continue;
+
+                String column = e.getValue();
+
+                if (m.columns.get(e.getValue()).ignored) continue;
+
                 sets.add(context.dialect().q(e.getValue()) + " = ?");
                 params.add(values.get(prop));
             }
