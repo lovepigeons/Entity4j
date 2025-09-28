@@ -516,6 +516,20 @@ public class Query<T> {
         public Filters<T> lessOrEquals(SFunction<T, ?> getter, Object value) { q.appendCondition(baseCol(getter), "<=", value); return this; }
         public Filters<T> like(SFunction<T, ?> getter, String pattern) { q.appendCondition(baseCol(getter), "LIKE", pattern); return this; }
         public Filters<T> in(SFunction<T, ?> getter, java.util.Collection<?> values) { q.appendCondition(baseCol(getter), "IN", new java.util.ArrayList<>(values)); return this; }
+        public Filters<T> isNull(SFunction<T, ?> getter) {
+            String col = baseCol(getter);
+            q.autoAndIfNeeded();
+            q.where.append(col).append("IS NULL");
+            return this;
+        }
+        public Filters<T> isNotNull(SFunction<T, ?> getter) {
+            String col = baseCol(getter);
+            q.autoAndIfNeeded();
+            q.where.append(col).append("IS NOT NULL");
+            return this;
+        }
+
+
         public Filters<T> equalsIgnoreCase(SFunction<T, ?> getter, String value) {
             String col = baseCol(getter);
             // Compare upper(column) = upper(?)
@@ -540,6 +554,30 @@ public class Query<T> {
             String alias = q.getAlias(type);
             String qcol = (alias != null ? q.ctx.dialect().q(alias) + "." : "") + q.ctx.dialect().q(col);
             q.appendCondition(qcol, "IN", new java.util.ArrayList<>(values));
+            return this;
+        }
+
+        public <J> Filters<T> isNull(Class<J> type, SFunction<J, ?> getter) {
+            String prop = LambdaUtils.propertyName(getter);
+            TableMeta<J> m = q.getMeta(type);
+            String col = m.propToColumn.getOrDefault(prop, Names.defaultColumnName(prop));
+            String alias = q.getAlias(type);
+            String qcol = (alias != null ? q.ctx.dialect().q(alias) + "." : "") + q.ctx.dialect().q(col);
+
+            q.autoAndIfNeeded();
+            q.where.append(col).append("IS NULL");
+            return this;
+        }
+
+        public <J> Filters<T> isNotNull(Class<J> type, SFunction<J, ?> getter) {
+            String prop = LambdaUtils.propertyName(getter);
+            TableMeta<J> m = q.getMeta(type);
+            String col = m.propToColumn.getOrDefault(prop, Names.defaultColumnName(prop));
+            String alias = q.getAlias(type);
+            String qcol = (alias != null ? q.ctx.dialect().q(alias) + "." : "") + q.ctx.dialect().q(col);
+
+            q.autoAndIfNeeded();
+            q.where.append(col).append("IS NOT NULL");
             return this;
         }
 

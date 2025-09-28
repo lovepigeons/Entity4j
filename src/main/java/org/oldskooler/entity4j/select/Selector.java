@@ -24,6 +24,14 @@ public final class Selector {
     }
 
     /**
+     * Column from a joined entity via getter reference.
+     */
+    public <E, R> Selector col(Class<E> entity, SFunction<E, R> getter, String alias) {
+        parts.add(SelectionPart.forGetter(entity, getter, alias));
+        return this;
+    }
+
+    /**
      * Add e.* for the given entity (root or joined).
      */
     public <E> Selector all(Class<E> entity) {
