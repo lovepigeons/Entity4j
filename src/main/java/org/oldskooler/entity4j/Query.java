@@ -208,17 +208,40 @@ public class Query<T> {
             if (p.kind == SelectionPart.Kind.STAR) {
                 String alias = getAlias(p.entityType != null ? p.entityType : this.meta.type);
                 columns.add((alias != null ? ctx.dialect().q(alias) : "*") + ".*");
-            } else {
+            } else if (p.kind == SelectionPart.Kind.COLUMN) {
                 Class<?> et = (p.entityType != null ? p.entityType : this.meta.type);
                 String tableAlias = getAlias(et);
                 String columnName = getMeta(et).propToColumn.get(p.propertyName);
                 String aliased =
                         (tableAlias != null ? ctx.dialect().q(tableAlias) + "." : "")
                                 + ctx.dialect().q(columnName);
-                String label = (p.alias != null && !p.alias.isEmpty()) ? (" AS " + p.alias) : "";
+                String label = (p.alias != null && !p.alias.isEmpty()) ? (" AS " + ctx.dialect().q(p.alias)) : "";
                 columns.add(aliased + label);
+            } else if (p.kind == SelectionPart.Kind.AGGREGATE) {
+                // Function name
+                String func = p.aggregateFunction.name(); // SUM, AVG, COUNT, MIN, MAX
+
+                // Build argument: either * (for COUNT(*)) or table.column
+                String arg;
+                if (p.propertyName == null) {
+                    // COUNT(*) case
+                    arg = "*";
+                } else {
+                    Class<?> et = (p.entityType != null ? p.entityType : this.meta.type);
+                    String tableAlias = getAlias(et);
+                    String columnName = getMeta(et).propToColumn.get(p.propertyName);
+                    arg = (tableAlias != null ? ctx.dialect().q(tableAlias) + "." : "") + ctx.dialect().q(columnName);
+                    if (p.distinct && p.aggregateFunction == SelectionPart.AggregateFunction.COUNT) {
+                        arg = "DISTINCT " + arg;
+                    }
+                }
+
+                String expression = func + "(" + arg + ")";
+                String label = (p.alias != null && !p.alias.isEmpty()) ? (" AS " + ctx.dialect().q(p.alias)) : "";
+                columns.add(expression + label);
             }
         }
+
         return String.join(", ", columns);
     }
 

@@ -68,7 +68,7 @@ public class MySqlDialect implements SqlDialect {
             StringBuilder d = new StringBuilder(q(col)).append(' ').append(type);
             if (auto) d.append(autoIncrementClause()); // per-dialect auto/identity
             if (!nullable) d.append(" NOT NULL");
-            if (!Column.DEFAULT_NONE.equals(defaultValue)) {
+            if (!auto && !Column.DEFAULT_NONE.equals(defaultValue)) {
                 d.append(" DEFAULT ").append(defaultValue).append("");
             }
             defs.add(d.toString());

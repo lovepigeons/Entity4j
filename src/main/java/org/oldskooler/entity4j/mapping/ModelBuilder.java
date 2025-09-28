@@ -1,5 +1,7 @@
 package org.oldskooler.entity4j.mapping;
 
+import org.oldskooler.entity4j.annotations.Column;
+
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -34,7 +36,7 @@ public final class ModelBuilder {
         int precision = 0;
         int scale = 0;
         int length = -1;
-        String defaultValue = "";
+        String defaultValue = Column.DEFAULT_NONE;
         boolean ignored = false;
 
         ColumnBuilder(String property) {

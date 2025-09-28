@@ -74,7 +74,7 @@ public class SqlServerDialect implements SqlDialect {
             StringBuilder d = new StringBuilder(q(col)).append(' ').append(baseType);
             if (auto) d.append(autoIncrementClause()); // IDENTITY(1,1)
             if (!nullable) d.append(" NOT NULL");
-            if (!Column.DEFAULT_NONE.equals(defaultValue)) {
+            if (!auto && !Column.DEFAULT_NONE.equals(defaultValue)) {
                 d.append(" DEFAULT ").append(defaultValue).append("");
             }
             defs.add(d.toString());
