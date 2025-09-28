@@ -565,7 +565,7 @@ public class Query<T> {
             String qcol = (alias != null ? q.ctx.dialect().q(alias) + "." : "") + q.ctx.dialect().q(col);
 
             q.autoAndIfNeeded();
-            q.where.append(col).append(" IS NULL");
+            q.where.append(qcol).append(" IS NULL");
             return this;
         }
 
@@ -577,7 +577,7 @@ public class Query<T> {
             String qcol = (alias != null ? q.ctx.dialect().q(alias) + "." : "") + q.ctx.dialect().q(col);
 
             q.autoAndIfNeeded();
-            q.where.append(col).append(" IS NOT NULL");
+            q.where.append(qcol).append(" IS NOT NULL");
             return this;
         }
 
