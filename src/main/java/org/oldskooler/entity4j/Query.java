@@ -519,13 +519,13 @@ public class Query<T> {
         public Filters<T> isNull(SFunction<T, ?> getter) {
             String col = baseCol(getter);
             q.autoAndIfNeeded();
-            q.where.append(col).append("IS NULL");
+            q.where.append(col).append(" IS NULL");
             return this;
         }
         public Filters<T> isNotNull(SFunction<T, ?> getter) {
             String col = baseCol(getter);
             q.autoAndIfNeeded();
-            q.where.append(col).append("IS NOT NULL");
+            q.where.append(col).append(" IS NOT NULL");
             return this;
         }
 
@@ -565,7 +565,7 @@ public class Query<T> {
             String qcol = (alias != null ? q.ctx.dialect().q(alias) + "." : "") + q.ctx.dialect().q(col);
 
             q.autoAndIfNeeded();
-            q.where.append(col).append("IS NULL");
+            q.where.append(col).append(" IS NULL");
             return this;
         }
 
@@ -577,7 +577,7 @@ public class Query<T> {
             String qcol = (alias != null ? q.ctx.dialect().q(alias) + "." : "") + q.ctx.dialect().q(col);
 
             q.autoAndIfNeeded();
-            q.where.append(col).append("IS NOT NULL");
+            q.where.append(col).append(" IS NOT NULL");
             return this;
         }
 
