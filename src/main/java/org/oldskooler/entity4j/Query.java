@@ -337,6 +337,146 @@ public class Query<T> {
         }
     }
 
+    /**
+     * Update rows (same as update(...)) but return the list of entities (as T) after the update.
+     *
+     * Implementation note: this implementation is DB-agnostic. It first executes the UPDATE,
+     * then runs the SELECT (via toList()) using the same WHERE clause to fetch the rows
+     * after update. If you have dialect-level RETURNING support and want to use it, we can
+     * add an optimized path that uses "UPDATE ... RETURNING *".
+     */
+    public List<T> updateReturningList(Consumer<SetBuilder<T>> setter) {
+        if (setter == null) throw new IllegalArgumentException("setter is required");
+        if (where.length() == 0) throw new IllegalArgumentException("WHERE must not be empty for updateReturningList()");
+
+        // perform update
+        int updated = update(setter);
+
+        // return the rows matching the WHERE (which now reflect the updated values)
+        return this.toList();
+    }
+
+    /**
+     * Update rows but return a single Optional<T> for the first matching row (after update).
+     * Uses limit=1 for the select. The update itself ignores limit (UPDATE affects all matching
+     * rows), so this returns the first updated row (if any).
+     *
+     * Note: if you intended to update exactly one row, ensure your WHERE clause targets one row.
+     */
+    public Optional<T> updateReturningOptional(Consumer<SetBuilder<T>> setter) {
+        if (setter == null) throw new IllegalArgumentException("setter is required");
+        if (where.length() == 0) throw new IllegalArgumentException("WHERE must not be empty for updateReturningOptional()");
+
+        // perform update
+        int updated = update(setter);
+
+        // fetch a single (first) updated row
+        Integer prevLimit = this.limit;
+        try {
+            this.limit = 1;
+            List<T> xs = this.toList();
+            return xs.isEmpty() ? Optional.empty() : Optional.of(xs.get(0));
+        } finally {
+            this.limit = prevLimit;
+        }
+    }
+
+    /**
+     * Convenience: increment a single column by `by` for all rows matching WHERE.
+     */
+    public int increment(SFunction<T, ?> getter, Number by) {
+        Map<SFunction<T, ?>, Number> m = new LinkedHashMap<>();
+        m.put(getter, by);
+        return incrementBatch(m);
+    }
+
+    /**
+     * Convenience: decrement a single column by `by` for all rows matching WHERE.
+     */
+    public int decrement(SFunction<T, ?> getter, Number by) {
+        Map<SFunction<T, ?>, Number> m = new LinkedHashMap<>();
+        m.put(getter, by);
+        return decrementBatch(m);
+    }
+
+    /**
+     * Batch increment multiple columns in one UPDATE. The map keys are property getters
+     * (SFunction) and values are the amount to add. Builds SQL like:
+     *   UPDATE table SET col1 = col1 + ?, col2 = col2 + ? WHERE ...
+     *
+     * The method is DB-agnostic and uses PreparedStatement binding.
+     */
+    public int incrementBatch(Map<SFunction<T, ?>, Number> increments) {
+        if (increments == null || increments.isEmpty()) throw new IllegalArgumentException("increments required");
+        if (where.length() == 0) throw new IllegalArgumentException("WHERE must not be empty for incrementBatch()");
+
+        StringBuilder setClause = new StringBuilder();
+        List<Object> bindParams = new ArrayList<>();
+
+        int i = 0;
+        for (Map.Entry<SFunction<T, ?>, Number> e : increments.entrySet()) {
+            String prop = LambdaUtils.propertyName(e.getKey());
+            String col = meta.propToColumn.getOrDefault(prop, Names.defaultColumnName(prop));
+            String qcol = ctx.dialect().q(col);
+
+            if (i++ > 0) setClause.append(", ");
+            // Build SET col = col + ?
+            setClause.append(qcol).append(" = ").append(qcol).append(" + ?");
+            bindParams.add(e.getValue());
+        }
+
+        String sql = "UPDATE " + ctx.q(meta.table) + " SET " + setClause.toString() + " WHERE " + where;
+
+        // final param list: increments first, then WHERE params (same order as update())
+        List<Object> all = new ArrayList<>(bindParams.size() + params.size());
+        all.addAll(bindParams);
+        all.addAll(params);
+
+        try (PreparedStatement ps = ctx.conn().prepareStatement(sql)) {
+            JdbcParamBinder.bindParams(ps, all);
+            return ps.executeUpdate();
+        } catch (SQLException ex) {
+            throw new RuntimeException("incrementBatch failed: " + sql, ex);
+        }
+    }
+
+    /**
+     * Batch decrement multiple columns in one UPDATE. Equivalent to incrementing by negative amounts.
+     */
+    public int decrementBatch(Map<SFunction<T, ?>, Number> decrements) {
+        if (decrements == null || decrements.isEmpty()) throw new IllegalArgumentException("decrements required");
+        if (where.length() == 0) throw new IllegalArgumentException("WHERE must not be empty for decrementBatch()");
+
+        // Build similar to incrementBatch but subtract
+        StringBuilder setClause = new StringBuilder();
+        List<Object> bindParams = new ArrayList<>();
+
+        int i = 0;
+        for (Map.Entry<SFunction<T, ?>, Number> e : decrements.entrySet()) {
+            String prop = LambdaUtils.propertyName(e.getKey());
+            String col = meta.propToColumn.getOrDefault(prop, Names.defaultColumnName(prop));
+            String qcol = ctx.dialect().q(col);
+
+            if (i++ > 0) setClause.append(", ");
+            // Build SET col = col - ?
+            setClause.append(qcol).append(" = ").append(qcol).append(" - ?");
+            bindParams.add(e.getValue());
+        }
+
+        String sql = "UPDATE " + ctx.q(meta.table) + " SET " + setClause.toString() + " WHERE " + where;
+
+        // final param list: decrements first, then WHERE params
+        List<Object> all = new ArrayList<>(bindParams.size() + params.size());
+        all.addAll(bindParams);
+        all.addAll(params);
+
+        try (PreparedStatement ps = ctx.conn().prepareStatement(sql)) {
+            JdbcParamBinder.bindParams(ps, all);
+            return ps.executeUpdate();
+        } catch (SQLException ex) {
+            throw new RuntimeException("decrementBatch failed: " + sql, ex);
+        }
+    }
 
     /** DELETE FROM {table} WHERE (built via filter(...)) */
     public int delete() {
