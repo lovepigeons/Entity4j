@@ -9,6 +9,7 @@ import org.oldskooler.entity4j.operations.DbBatchOperations;
 import org.oldskooler.entity4j.operations.DbCrudOperations;
 import org.oldskooler.entity4j.operations.DbDdlOperations;
 import org.oldskooler.entity4j.operations.DbQueryExecutor;
+import org.oldskooler.entity4j.transaction.*;
 import org.oldskooler.entity4j.util.*;
 
 import java.sql.*;
@@ -31,11 +32,8 @@ import java.util.*;
  * @since 1.0.0
  */
 public abstract class IDbContext implements AutoCloseable {
-
-    /** The underlying JDBC connection */
     private final Connection connection;
-
-    /** The SQL dialect for database-specific operations */
+    private Transaction currentTransaction;
     private final SqlDialect dialect;
 
     /** Registry for entity-to-table mappings */
@@ -97,6 +95,221 @@ public abstract class IDbContext implements AutoCloseable {
             onModelCreating(new ModelBuilder(mappingRegistry));
             modelBuilt = true;
         }
+    }
+
+    /**
+     * Begins a new database transaction.
+     * If a transaction is already active, throws IllegalStateException.
+     *
+     * @return a new Transaction object
+     * @throws SQLException if a database access error occurs
+     * @throws IllegalStateException if a transaction is already active
+     */
+    public Transaction beginTransaction() throws SQLException {
+        if (currentTransaction != null && !currentTransaction.isCompleted()) {
+            throw new IllegalStateException("A transaction is already active. Commit or rollback the current transaction before starting a new one.");
+        }
+
+        currentTransaction = new DbTransaction(connection);
+        return currentTransaction;
+    }
+
+    /**
+     * Gets the current active transaction, or null if no transaction is active.
+     *
+     * @return the current Transaction or null
+     */
+    public Transaction getCurrentTransaction() {
+        if (currentTransaction != null && currentTransaction.isCompleted()) {
+            currentTransaction = null;
+        }
+        return currentTransaction;
+    }
+
+    /**
+     * Checks if a transaction is currently active.
+     *
+     * @return true if a transaction is active, false otherwise
+     */
+    public boolean hasActiveTransaction() {
+        return getCurrentTransaction() != null;
+    }
+
+    /**
+     * Executes a function within a transaction, automatically committing on success
+     * or rolling back on failure.
+     *
+     * @param action the action to perform within the transaction
+     * @param <T> the return type of the action
+     * @return the result of the action
+     * @throws Exception if the action throws an exception
+     */
+    public <T> T executeInTransaction(TransactionAction<T> action) throws Exception {
+        Transaction transaction = beginTransaction();
+        try {
+            T result = action.execute(this);
+            transaction.commit();
+            return result;
+        } catch (Exception e) {
+            try {
+                transaction.rollback();
+            } catch (SQLException rollbackEx) {
+                e.addSuppressed(rollbackEx);
+            }
+            throw e;
+        } finally {
+            if (!transaction.isCompleted()) {
+                try {
+                    transaction.close();
+                } catch (SQLException closeEx) {
+                    // Log or handle close exception
+                }
+            }
+        }
+    }
+
+    /**
+     * Executes a function within a transaction without a return value,
+     * automatically committing on success or rolling back on failure.
+     *
+     * @param action the action to perform within the transaction
+     * @throws Exception if the action throws an exception
+     */
+    public void executeInTransaction(VoidTransactionAction action) throws Exception {
+        executeInTransaction(ctx -> {
+            action.execute(ctx);
+            return null;
+        });
+    }
+
+    /**
+     * Begins a new database transaction with the specified options.
+     *
+     * @param options the transaction options
+     * @return a new Transaction object
+     * @throws SQLException if a database access error occurs
+     * @throws IllegalStateException if a transaction is already active
+     */
+    public Transaction beginTransaction(TransactionOptions options) throws SQLException {
+        if (currentTransaction != null && !currentTransaction.isCompleted()) {
+            throw new IllegalStateException("A transaction is already active. Commit or rollback the current transaction before starting a new one.");
+        }
+
+        currentTransaction = new DbTransactionEnhanced(connection, options);
+        return currentTransaction;
+    }
+
+    /**
+     * Begins a new database transaction with the specified isolation level.
+     *
+     * @param isolationLevel the transaction isolation level
+     * @return a new Transaction object
+     * @throws SQLException if a database access error occurs
+     * @throws IllegalStateException if a transaction is already active
+     */
+    public Transaction beginTransaction(TransactionIsolationLevel isolationLevel) throws SQLException {
+        TransactionOptions options = TransactionOptions.builder()
+                .isolationLevel(isolationLevel)
+                .build();
+        return beginTransaction(options);
+    }
+
+    /**
+     * Executes a function within a transaction with specified options,
+     * automatically committing on success or rolling back on failure.
+     *
+     * @param options the transaction options
+     * @param action the action to perform within the transaction
+     * @param <T> the return type of the action
+     * @return the result of the action
+     * @throws Exception if the action throws an exception
+     */
+    public <T> T executeInTransaction(TransactionOptions options, TransactionAction<T> action) throws Exception {
+        Transaction transaction = beginTransaction(options);
+        try {
+            T result = action.execute(this);
+            transaction.commit();
+            return result;
+        } catch (Exception e) {
+            try {
+                transaction.rollback();
+            } catch (SQLException rollbackEx) {
+                e.addSuppressed(rollbackEx);
+            }
+            throw e;
+        } finally {
+            if (!transaction.isCompleted()) {
+                try {
+                    transaction.close();
+                } catch (SQLException closeEx) {
+                    // Log or handle close exception
+                }
+            }
+        }
+    }
+
+    /**
+     * Executes an action within a transaction with specified options,
+     * automatically committing on success or rolling back on failure.
+     *
+     * @param options the transaction options
+     * @param action the action to perform within the transaction
+     * @throws Exception if the action throws an exception
+     */
+    public void executeInTransaction(TransactionOptions options, VoidTransactionAction action) throws Exception {
+        executeInTransaction(options, ctx -> {
+            action.execute(ctx);
+            return null;
+        });
+    }
+
+    /**
+     * Executes a function within a serializable transaction (highest isolation level).
+     *
+     * @param action the action to perform within the transaction
+     * @param <T> the return type of the action
+     * @return the result of the action
+     * @throws Exception if the action throws an exception
+     */
+    public <T> T executeInSerializableTransaction(TransactionAction<T> action) throws Exception {
+        TransactionOptions options = TransactionOptions.builder()
+                .isolationLevel(TransactionIsolationLevel.SERIALIZABLE)
+                .build();
+        return executeInTransaction(options, action);
+    }
+
+    /**
+     * Executes a function within a read-only transaction.
+     * This can provide performance benefits for queries.
+     *
+     * @param action the action to perform within the transaction
+     * @param <T> the return type of the action
+     * @return the result of the action
+     * @throws Exception if the action throws an exception
+     */
+    public <T> T executeInReadOnlyTransaction(TransactionAction<T> action) throws Exception {
+        TransactionOptions options = TransactionOptions.builder()
+                .readOnly(true)
+                .build();
+        return executeInTransaction(options, action);
+    }
+
+    /**
+     * Functional interface for transaction actions that return a value.
+     *
+     * @param <T> the return type
+     */
+    @FunctionalInterface
+    public interface TransactionAction<T> {
+        T execute(IDbContext context) throws Exception;
+    }
+
+    /**
+     * Functional interface for transaction actions that don't return a value.
+     */
+    @FunctionalInterface
+    public interface VoidTransactionAction {
+        void execute(IDbContext context) throws Exception;
     }
 
     /**
