@@ -42,11 +42,51 @@ public class Query<T> {
     private boolean hasExplicitSelect = false;
     private final List<SelectionPart> selectionParts = new ArrayList<>();
 
-    Query(IDbContext ctx, TableMeta<T> meta) {
+    public Query(IDbContext ctx, TableMeta<T> meta) {
         this.ctx = ctx;
         this.meta = meta;
         // Register base type in alias map; alias will be null until as() is called
         aliases.put(meta.type, new AliasMeta<>(meta, null));
+    }
+
+    public Class<T> getEntityType() {
+        return meta.type;
+    }
+
+    public String getWhereClause() {
+        return where.toString();
+    }
+
+    public List<Object> getParameters() {
+        return new ArrayList<>(params);
+    }
+
+    public List<String> getOrderBys() {
+        return new ArrayList<>(orderBys);
+    }
+
+    public Integer getLimit() {
+        return limit;
+    }
+
+    public Integer getOffset() {
+        return offset;
+    }
+
+    public String getBaseAlias() {
+        return baseAlias;
+    }
+
+    public List<JoinPart<?>> getJoins() {
+        return new ArrayList<>(joins);
+    }
+
+    public boolean hasExplicitSelect() {
+        return hasExplicitSelect;
+    }
+
+    public List<SelectionPart> getSelectionParts() {
+        return new ArrayList<>(selectionParts);
     }
 
     /* -------------------------------
@@ -808,13 +848,29 @@ public class Query<T> {
        Simple holders
        ------------------------------- */
 
-    private static final class JoinPart<J> {
+    public static final class JoinPart<J> {
         final TableMeta<J> meta;
         final String alias;
         final String kind;
         final String onSql;
         JoinPart(TableMeta<J> meta, String alias, String kind, String onSql) {
             this.meta = meta; this.alias = alias; this.kind = kind; this.onSql = onSql;
+        }
+
+        public TableMeta<J> getMeta() {
+            return meta;
+        }
+
+        public String getAlias() {
+            return alias;
+        }
+
+        public String getKind() {
+            return kind;
+        }
+
+        public String getOnSql() {
+            return onSql;
         }
     }
 
