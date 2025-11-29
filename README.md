@@ -48,7 +48,7 @@ Then add the dependency:
 
 ```groovy
 dependencies {
-    implementation 'com.github.lovepigeons:Entity4j:v1.0.9'
+    implementation 'com.github.lovepigeons:Entity4j:v1.0.19'
 }
 ```
 
@@ -72,7 +72,7 @@ Then add the dependency:
     <dependency>
         <groupId>com.github.lovepigeons</groupId>
         <artifactId>Entity4j</artifactId>
-        <version>v1.0.9</version>
+        <version>v1.0.19</version>
     </dependency>
 </dependencies>
 ```

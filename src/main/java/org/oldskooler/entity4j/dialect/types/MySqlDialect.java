@@ -118,7 +118,6 @@ public class MySqlDialect implements SqlDialect {
                 length = meta.length;
             }
         } else {
-
             user = SqlDialect.userTypeOrNull(colAnn.type());
             precision = colAnn.precision();
             scale = Math.max(0, colAnn.scale());

@@ -96,7 +96,7 @@ public final class TableMeta<T> {
 
             // Column hints / defaults
             boolean nullable = true;
-            String defaultValue = "";
+            String defaultValue = Column.DEFAULT_NONE;
             String typeOverride = "";
             int precision = 0;
             int scale = 0;
@@ -153,11 +153,11 @@ public final class TableMeta<T> {
             p2c.put(f.getName(), f.getName());
             p2f.put(f.getName(), f);
             // Default column meta: nullable true, no explicit type, no precision/scale.
-            cols.put(f.getName(), new ColumnMeta(f.getName(), f.getName(), true, "", "", 0, 0, -1, false));
+            cols.put(f.getName(), new ColumnMeta(f.getName(), f.getName(), true, Column.DEFAULT_NONE, "", 0, 0, -1, false));
             if ("id".equals(f.getName())) {
                 idF = f;
                 idCol = "id";
-                cols.put("id", new ColumnMeta("id", "id", false, "", "", 0, 0, -1, false)); // PK non-nullable by default
+                cols.put("id", new ColumnMeta("id", "id", false, Column.DEFAULT_NONE, "", 0, 0, -1, false)); // PK non-nullable by default
 
                 keys.put("id", new PrimaryKey("id", idCol, true));
             }
