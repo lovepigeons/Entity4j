@@ -42,21 +42,6 @@ public final class Selector implements Serializable {
         return this;
     }
 
-    public <T, R> Selector col(SFunction<T, R> getter, SelectionOrder order) {
-        parts.add(SelectionPart.forGetter(null, getter, null, order));
-        return this;
-    }
-
-    public <E, R> Selector col(Class<E> entity, SFunction<E, R> getter, SelectionOrder order) {
-        parts.add(SelectionPart.forGetter(entity, getter, null, order));
-        return this;
-    }
-
-    public <E, R> Selector col(Class<E> entity, SFunction<E, R> getter, String alias, SelectionOrder order) {
-        parts.add(SelectionPart.forGetter(entity, getter, alias, order));
-        return this;
-    }
-
     /**
      * Add e.* for the given entity (root or joined).
      */
@@ -75,22 +60,12 @@ public final class Selector implements Serializable {
         return this;
     }
 
-    public Selector computed(Supplier<String> expression, SelectionOrder order) {
-        parts.add(SelectionPart.computed(null, expression, order));
-        return this;
-    }
-
-    public <E> Selector computed(Class<E> entity, Supplier<String> expression, SelectionOrder order) {
-        parts.add(SelectionPart.computed(entity, expression, order));
-        return this;
-    }
-
-    public <E, R> String columnName(SFunction<E, R> getter) {
-        return columnName(null, getter);
+    public <E, R> String getColumnName(SFunction<E, R> getter) {
+        return getColumnName(null, getter);
     }
 
     @SuppressWarnings("unchecked")
-    public <E, R> String columnName(Class<E> entity, SFunction<E, R> getter) {
+    public <E, R> String getColumnName(Class<E> entity, SFunction<E, R> getter) {
         String propertyName = LambdaUtils.propertyName(getter);
 
         Class<E> et = entity != null
@@ -168,45 +143,6 @@ public final class Selector implements Serializable {
         return this;
     }
 
-    public <T, R> Selector sum(SFunction<T, R> getter, SelectionOrder order) {
-        parts.add(SelectionPart.aggregate(null, SelectionPart.AggregateFunction.SUM, getter, false, null, order));
-        return this;
-    }
-
-    public <E, T, R> Selector sum(Class<E> entity, SFunction<T, R> getter, SelectionOrder order) {
-        parts.add(SelectionPart.aggregate(entity, SelectionPart.AggregateFunction.SUM, getter, false, null, order));
-        return this;
-    }
-
-    public <T, R> Selector avg(SFunction<T, R> getter, SelectionOrder order) {
-        parts.add(SelectionPart.aggregate(null, SelectionPart.AggregateFunction.AVG, getter, false, null, order));
-        return this;
-    }
-
-    public <E, T, R> Selector avg(Class<E> entity, SFunction<T, R> getter, SelectionOrder order) {
-        parts.add(SelectionPart.aggregate(entity, SelectionPart.AggregateFunction.AVG, getter, false, null, order));
-        return this;
-    }
-
-    public <T, R> Selector max(SFunction<T, R> getter, SelectionOrder order) {
-        parts.add(SelectionPart.aggregate(null, SelectionPart.AggregateFunction.MAX, getter, false, null, order));
-        return this;
-    }
-
-    public <E, T, R> Selector max(Class<E> entity, SFunction<T, R> getter, SelectionOrder order) {
-        parts.add(SelectionPart.aggregate(entity, SelectionPart.AggregateFunction.MAX, getter, false, null, order));
-        return this;
-    }
-
-    public <T, R> Selector min(SFunction<T, R> getter, SelectionOrder order) {
-        parts.add(SelectionPart.aggregate(null, SelectionPart.AggregateFunction.MIN, getter, false, null, order));
-        return this;
-    }
-
-    public <E, T, R> Selector min(Class<E> entity, SFunction<T, R> getter, SelectionOrder order) {
-        parts.add(SelectionPart.aggregate(entity, SelectionPart.AggregateFunction.MIN, getter, false, null, order));
-        return this;
-    }
 
     public <T, R> Selector count(SFunction<T, R> getter) {
         parts.add(SelectionPart.aggregate(null, SelectionPart.AggregateFunction.COUNT, getter, false, null, null));
@@ -234,28 +170,8 @@ public final class Selector implements Serializable {
         return this;
     }
 
-    public <T, R> Selector count(SFunction<T, R> getter, SelectionOrder order) {
-        parts.add(SelectionPart.aggregate(null, SelectionPart.AggregateFunction.COUNT, getter, false, null, order));
-        return this;
-    }
-
     public Selector count(SelectionOrder order) {
         parts.add(SelectionPart.count(null, order));
-        return this;
-    }
-
-    public <T, R> Selector countDistinct(SFunction<T, R> getter, SelectionOrder order) {
-        parts.add(SelectionPart.aggregate(null, SelectionPart.AggregateFunction.COUNT, getter, true, null, order));
-        return this;
-    }
-
-    public <E, T, R> Selector count(Class<E> entity, SFunction<T, R> getter, SelectionOrder order) {
-        parts.add(SelectionPart.aggregate(entity, SelectionPart.AggregateFunction.COUNT, getter, false, null, order));
-        return this;
-    }
-
-    public <E, T, R> Selector countDistinct(Class<E> entity, SFunction<T, R> getter, SelectionOrder order) {
-        parts.add(SelectionPart.aggregate(entity, SelectionPart.AggregateFunction.COUNT, getter, true, null, order));
         return this;
     }
 

@@ -3,6 +3,7 @@ package org.oldskooler.entity4j;
 import org.oldskooler.entity4j.functions.SFunction;
 import org.oldskooler.entity4j.mapping.SetBuilder;
 import org.oldskooler.entity4j.mapping.TableMeta;
+import org.oldskooler.entity4j.select.Aggregator;
 import org.oldskooler.entity4j.select.SelectionOrder;
 import org.oldskooler.entity4j.select.SelectionPart;
 import org.oldskooler.entity4j.select.Selector;
@@ -249,8 +250,8 @@ public class Query<T> implements Serializable {
         return this;
     }
 
-    public Query<T> orderBy(Consumer<Selector> s) {
-        Selector sel = new Selector(this);
+    public Query<T> orderBy(Consumer<Aggregator> s) {
+        Aggregator sel = new Aggregator(this);
         s.accept(sel);
         this.orderBys.addAll(sel.parts());
         return this;
