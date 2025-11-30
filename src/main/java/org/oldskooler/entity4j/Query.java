@@ -11,6 +11,7 @@ import org.oldskooler.entity4j.util.Names;
 import org.oldskooler.entity4j.util.LambdaUtils;
 import org.oldskooler.entity4j.util.ReflectionUtils;
 
+import java.io.Serializable;
 import java.lang.reflect.Field;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -20,7 +21,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-public class Query<T> {
+public class Query<T> implements Serializable {
     private static QuerySerializer querySerializer;
 
     private final IDbContext ctx;
@@ -208,7 +209,7 @@ public class Query<T> {
 
     /** Select specific columns from the root and/or joined entities. */
     public Query<T> select(Consumer<Selector> s) {
-        Selector sel = new Selector();
+        Selector sel = new Selector(this);
         s.accept(sel);
         this.selectionParts.addAll(sel.parts());
         this.hasExplicitSelect = true;
@@ -266,7 +267,7 @@ public class Query<T> {
 
             } else if (p.kind == SelectionPart.Kind.COMPUTED) {
                 Class<?> et = (p.entityType != null ? p.entityType : this.meta.type);
-                String expr = getAlias(et);
+                String expr = p.expression.get();
                 String label = (p.alias != null && !p.alias.isEmpty()) ? (" AS " + ctx.dialect().q(p.alias)) : "";
                 columns.add(expr + label);
             } else if (p.kind == SelectionPart.Kind.COLUMN) {
@@ -643,13 +644,17 @@ public class Query<T> {
     }
 
     @SuppressWarnings("unchecked")
-    private <X> TableMeta<X> getMeta(Class<X> type) {
+    public <X> TableMeta<X> getMeta(Class<X> type) {
         AliasMeta<?> a = aliases.get(type);
         if (a == null) throw new IllegalArgumentException("Type not present in FROM/JOIN: " + type.getName());
         return (TableMeta<X>) a.meta;
     }
 
-    private String getAlias(Class<?> type) {
+    public TableMeta<T> getTableMeta() {
+        return meta;
+    }
+
+    public String getAlias(Class<?> type) {
         AliasMeta<?> a = aliases.get(type);
         // For base type, prefer explicit alias if present
         if (a != null && a.alias != null) return a.alias;
@@ -690,6 +695,10 @@ public class Query<T> {
         String s = where.toString().trim();
         if (s.endsWith("(") || s.endsWith("AND") || s.endsWith("OR")) return;
         where.append(" AND ");
+    }
+
+    public IDbContext context() {
+        return ctx;
     }
 
     /* -------------------------------

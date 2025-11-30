@@ -2,11 +2,21 @@ package org.oldskooler.entity4j.select;
 
 import org.oldskooler.entity4j.Query;
 import org.oldskooler.entity4j.functions.SFunction;
+import org.oldskooler.entity4j.functions.SerializableSupplier;
+import org.oldskooler.entity4j.mapping.TableMeta;
+import org.oldskooler.entity4j.util.LambdaUtils;
+
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
-public final class Selector {
+public final class Selector implements Serializable {
     private final List<SelectionPart> parts = new ArrayList<>();
+    private final Query<?> query;
+
+    public Selector(Query<?> query) {
+        this.query = query;
+    }
 
     /**
      * Column from root entity via getter reference.
@@ -40,9 +50,38 @@ public final class Selector {
         return this;
     }
 
-    public <E> Selector computed(Class<E> entity, String expression) {
+    public Selector computed(SerializableSupplier<String> expression) {
+        parts.add(SelectionPart.computed(null, expression));
+        return this;
+    }
+
+    public <E> Selector computed(Class<E> entity, SerializableSupplier<String> expression) {
         parts.add(SelectionPart.computed(entity, expression));
         return this;
+    }
+
+    public <E, R> String columnName(SFunction<E, R> getter) {
+        return columnName(null, getter);
+    }
+
+    @SuppressWarnings("unchecked")
+    public <E, R> String columnName(Class<E> entity, SFunction<E, R> getter) {
+        String propertyName = LambdaUtils.propertyName(getter);
+
+        Class<E> et = entity != null
+                ? entity
+                : (Class<E>) query.getTableMeta().type;
+
+        String alias = query.getAlias(et);
+
+        String column = query.context().dialect().q(
+                TableMeta.<E>of(et, query.context().mappingRegistry())
+                        .propToColumn.get(propertyName)
+        );
+
+        return (alias == null || alias.isEmpty())
+                ? column
+                : alias + "." + column;
     }
 
     /**
@@ -131,7 +170,4 @@ public final class Selector {
         return this;
     }
 
-    public Query<Object> computed(int getRating) {
-        return null;
-    }
 }

@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import org.oldskooler.entity4j.IDbContext;
 import org.oldskooler.entity4j.Query;
+import org.oldskooler.entity4j.functions.SerializableSupplier;
 import org.oldskooler.entity4j.mapping.TableMeta;
 import org.oldskooler.entity4j.select.SelectionPart;
 
@@ -12,6 +13,7 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * Serializes and deserializes Query objects to/from JSON.
@@ -19,6 +21,7 @@ import java.util.Map;
  */
 public class QuerySerializer {
     private final Gson gson;
+    private final SupplierSerializer supplierSerializer;
 
     public QuerySerializer() {
         this.gson = new GsonBuilder()
@@ -26,10 +29,13 @@ public class QuerySerializer {
                 .disableHtmlEscaping()
                 //.serializeNulls()
                 .create();
+
+        this.supplierSerializer = new SupplierSerializer();
     }
 
     public QuerySerializer(Gson customGson) {
         this.gson = customGson;
+        this.supplierSerializer = new SupplierSerializer();
     }
 
     /**
@@ -104,7 +110,7 @@ public class QuerySerializer {
                 selDTO.setAggregateFunction(part.aggregateFunction.name());
             }
             selDTO.setDistinct(part.distinct);
-            selDTO.setExpression(part.expression);
+            selDTO.setExpression(part.expression != null ? part.expression.get() : null);
             selectionDTOs.add(selDTO);
         }
         dto.setSelectionParts(selectionDTOs);
@@ -263,7 +269,7 @@ public class QuerySerializer {
                 String.class,
                 SelectionPart.AggregateFunction.class,
                 boolean.class,
-                String.class
+                SerializableSupplier.class
         );
         ctor.setAccessible(true);
 
@@ -284,7 +290,7 @@ public class QuerySerializer {
             }
 
             boolean distinct = selDTO.isDistinct();
-            String expr = selDTO.getExpression();
+            SerializableSupplier<String> expr = selDTO.getExpression() != null ? selDTO::getExpression : null;
 
             SelectionPart part = ctor.newInstance(
                     kind,

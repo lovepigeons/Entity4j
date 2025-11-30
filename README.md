@@ -20,6 +20,7 @@ Entity4j is a minimal, type-safe object relational mapper for Java. It lets you 
 - [Complex Query Example](#complex-query-example)
 - [Column Selection](#column-selection)
     - [Basic Column Selection](#basic-column-selection)
+	- [Computed Columns](#computed-columns)
     - [Selecting into Custom Types](#selecting-into-custom-types)
     - [Using toMapList()](#using-tomaplist)
 - [CRUD Operations](#crud-operations)
@@ -291,6 +292,52 @@ FROM users
 WHERE status = ?
 ORDER BY name ASC
 ```
+
+### Computed Columns
+
+Entity4j supports computed (derived) columns in queries. Computed columns allow you to define SQL expressions directly in the `select` builder while still keeping the type-safe, fluent Entity4j API.
+
+This is useful for calculated fields (e.g., multipliers, concatenation, arithmetic operations) or any SQL expression that does not map directly to an entity property.
+
+#### Example
+```java
+Query query = ctx.from(User.class).as("u")
+    .select(s -> s
+        .col(User::getId).as("user_id")
+        .col(User::getName).as("user_name")
+        .col(User::getRating).as("rating")
+        .computed(() -> s.columnName(User::getRating) + " * 2")
+            .as("double_rating")
+    );
+```
+
+**Generated SQL (dialect-dependent, simplified):**
+```sql
+SELECT
+    u.id AS user_id,
+    u.name AS user_name,
+    u.rating AS rating,
+    u.rating * 2 AS double_rating
+FROM user u
+```
+
+#### How It Works
+
+* `col(...)` adds a regular mapped column from an entity getter.
+* `computed(...)` adds a raw SQL expression to the SELECT list.
+* The computed expression receives access to the same selector `s`, so you can safely reference columns using:
+```java
+s.columnName(User::getRating)
+```
+
+This keeps expressions consistent with your mapping configuration and table aliases.
+
+#### Notes on Computed Columns
+
+* Computed columns do not require a property on the entity.
+* They can use any valid SQL expression supported by the active dialect.
+* Use `.as("alias")` to give the computed column a name, just like regular columns.
+* Computed columns work with aggregations, CASE expressions, and can be combined with entity-mapped columns.
 
 ### Selecting into Custom Types
 

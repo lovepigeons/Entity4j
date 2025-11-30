@@ -1,9 +1,13 @@
 package org.oldskooler.entity4j.select;
 
 import org.oldskooler.entity4j.functions.SFunction;
+import org.oldskooler.entity4j.functions.SerializableSupplier;
 import org.oldskooler.entity4j.util.LambdaUtils;
 
-public final class SelectionPart {
+import java.io.Serializable;
+import java.util.function.Supplier;
+
+public final class SelectionPart implements Serializable {
     public enum Kind {COLUMN, STAR, AGGREGATE, COMPUTED}
 
     public enum AggregateFunction {SUM, AVG, COUNT, MIN, MAX}
@@ -12,7 +16,7 @@ public final class SelectionPart {
     public final Class<?> entityType;   // null => root
     public final String propertyName;   // for COLUMN and AGGREGATE (can be null for COUNT(*))
     public final String alias;          // optional alias for COLUMN or AGGREGATE
-    public final String expression;
+    public final SerializableSupplier<String> expression;
 
     // only used for aggregates:
     public final AggregateFunction aggregateFunction;
@@ -24,7 +28,7 @@ public final class SelectionPart {
                           String alias,
                           AggregateFunction aggregateFunction,
                           boolean distinct,
-                          String expression) {
+                          SerializableSupplier<String> expression) {
         this.kind = kind;
         this.entityType = entityType;
         this.propertyName = propertyName;
@@ -40,7 +44,7 @@ public final class SelectionPart {
         return new SelectionPart(Kind.COLUMN, entityType, prop, alias, null, false, null);
     }
 
-    public static <E> SelectionPart computed(Class<E> entity, String expression) {
+    public static <E> SelectionPart computed(Class<E> entity, SerializableSupplier<String> expression) {
         return new SelectionPart(Kind.COMPUTED, entity, null, null, null, false, expression);
     }
 
@@ -65,7 +69,7 @@ public final class SelectionPart {
     }
 
     public SelectionPart withAlias(String alias) {
-        return new SelectionPart(kind, entityType, propertyName, alias, aggregateFunction, distinct, null);
+        return new SelectionPart(kind, entityType, propertyName, alias, aggregateFunction, distinct, expression);
     }
 
     @Override
