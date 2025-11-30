@@ -3,6 +3,7 @@ package org.oldskooler.entity4j;
 import org.oldskooler.entity4j.functions.SFunction;
 import org.oldskooler.entity4j.mapping.SetBuilder;
 import org.oldskooler.entity4j.mapping.TableMeta;
+import org.oldskooler.entity4j.select.SelectionOrder;
 import org.oldskooler.entity4j.select.SelectionPart;
 import org.oldskooler.entity4j.select.Selector;
 import org.oldskooler.entity4j.serialization.QuerySerializer;
@@ -32,10 +33,10 @@ public class Query<T> implements Serializable {
     final List<Object> params = new ArrayList<>();
 
     // Multi-ORDER BY
-    private final List<String> orderBys = new ArrayList<>();
+    private final List<SelectionPart> orderBys = new ArrayList<>();
 
     // Multi-GROUP BY
-    private final List<String> groupBys = new ArrayList<>();
+    private final List<SelectionPart> groupBys = new ArrayList<>();
 
 
     // Pagination
@@ -73,12 +74,12 @@ public class Query<T> implements Serializable {
         return new ArrayList<>(params);
     }
 
-    public List<String> getOrderBys() {
-        return new ArrayList<>(orderBys);
+    public List<SelectionPart> getOrderBys() {
+        return orderBys;
     }
 
-    public List<String> getGroupBys() {
-        return new ArrayList<>(groupBys);
+    public List<SelectionPart> getGroupBys() {
+        return groupBys;
     }
 
     public Integer getLimit() {
@@ -122,47 +123,44 @@ public class Query<T> implements Serializable {
         return this;
     }
 
-    /** Backwards-compatible single-column ORDER BY on base table. */
+    /*
     public Query<T> orderBy(SFunction<T, ?> getter, boolean asc) {
-        orderBys.add(qualify(meta, getter, asc));
+        orderBys.add(() -> qualify(meta, getter, asc));
         return this;
     }
-    /** Add another ORDER BY on base table (same as calling orderBy again). */
+    public Query<T> orderBy(Supplier<String> getter, boolean asc) {
+
+    }
     public Query<T> thenOrderBy(SFunction<T, ?> getter, boolean asc) {
         return orderBy(getter, asc);
     }
 
-    /** ORDER BY using a getter from a joined type. */
     public <J> Query<T> orderBy(Class<J> type, SFunction<J, ?> getter, boolean asc) {
-        orderBys.add(qualify(getMeta(type), getter, asc));
+        orderBys.add(() -> qualify(getMeta(type), getter, asc));
         return this;
     }
 
-    /** Add another ORDER BY using a joined type. */
     public <J> Query<T> thenOrderBy(Class<J> type, SFunction<J, ?> getter, boolean asc) {
         return orderBy(type, getter, asc);
     }
 
-    /** Backwards-compatible single-column ORDER BY on base table. */
     public Query<T> groupBy(SFunction<T, ?> getter) {
-        groupBys.add(qualify(meta, getter));
+        groupBys.add(() -> qualify(meta, getter));
         return this;
     }
-    /** Add another ORDER BY on base table (same as calling orderBy again). */
     public Query<T> thenGroupBy(SFunction<T, ?> getter) {
         return groupBy(getter);
     }
 
-    /** ORDER BY using a getter from a joined type. */
     public <J> Query<T> groupBy(Class<J> type, SFunction<J, ?> getter) {
-        groupBys.add(qualify(getMeta(type), getter));
+        groupBys.add(() -> qualify(getMeta(type), getter));
         return this;
     }
 
-    /** Add another ORDER BY using a joined type. */
     public <J> Query<T> thenGroupBy(Class<J> type, SFunction<J, ?> getter) {
         return groupBy(type, getter);
     }
+*/
 
     public Query<T> limit(Integer n) { this.limit = n; return this; }
     public Query<T> offset(Integer n) { this.offset = n; return this; }
@@ -244,6 +242,20 @@ public class Query<T> implements Serializable {
         return this;
     }
 
+    public Query<T> groupBy(Consumer<Selector> s) {
+        Selector sel = new Selector(this);
+        s.accept(sel);
+        this.groupBys.addAll(sel.parts());
+        return this;
+    }
+
+    public Query<T> orderBy(Consumer<Selector> s) {
+        Selector sel = new Selector(this);
+        s.accept(sel);
+        this.orderBys.addAll(sel.parts());
+        return this;
+    }
+
     /* -------------------------------
        Internal SQL building
        ------------------------------- */
@@ -268,24 +280,37 @@ public class Query<T> implements Serializable {
         // WHERE
         if (where.length() > 0) sql.append(" WHERE ").append(where);
 
+        // Add group by clause
+        if (!this.groupBys.isEmpty()) {
+            sql.append(" GROUP BY ");
+            sql.append(buildClause(this.groupBys));
+        }
+
+        // Add order by clause
+        if (!this.orderBys.isEmpty()) {
+            sql.append(" ORDER BY ");
+            sql.append(buildClause(this.orderBys));
+        }
+
+        /*
         // GROUP BY (also fed to dialect for pagination variations)
         String groupByClause = null;
         if (!groupBys.isEmpty()) {
-            groupByClause = String.join(", ", groupBys);
+            groupByClause = String.join(", ", this.getGroupBys());
             sql.append(" GROUP BY ").append(groupByClause);
         }
 
         // ORDER BY (also fed to dialect for pagination variations)
         String orderByClause = null;
         if (!orderBys.isEmpty()) {
-            orderByClause = String.join(", ", orderBys);
+            orderByClause = String.join(", ", this.getOrderBys());
             sql.append(" ORDER BY ").append(orderByClause);
         }
 
-
+        */
 
         // Pagination is dialect-specific; let dialect rewrite/append as needed.
-        return ctx.dialect().paginate(sql.toString(), groupByClause, orderByClause, limit, offset);
+        return ctx.dialect().paginate(sql.toString(), "", "", limit, offset);
     }
 
     private String buildSelectClause() {
@@ -296,17 +321,26 @@ public class Query<T> implements Serializable {
                 return "*";
         }
 
+       return buildClause(this.selectionParts);
+    }
+
+    private String buildClause(Collection<SelectionPart> clauses) {
         List<String> columns = new ArrayList<>();
-        for (SelectionPart p : selectionParts) {
+        for (SelectionPart p : clauses) {
+            String orderBy = "";
+            if (p.orderBy != null) {
+                orderBy = p.orderBy == SelectionOrder.ASC ? " ASC" : " DESC";
+            }
+
             if (p.kind == SelectionPart.Kind.STAR) {
                 String alias = getAlias(p.entityType != null ? p.entityType : this.meta.type);
-                columns.add((alias != null ? ctx.dialect().q(alias) : "*") + ".*");
+                columns.add((alias != null ? ctx.dialect().q(alias) : "*") + ".*" + orderBy);
 
             } else if (p.kind == SelectionPart.Kind.COMPUTED) {
                 Class<?> et = (p.entityType != null ? p.entityType : this.meta.type);
                 String expr = p.expression.get();
                 String label = (p.alias != null && !p.alias.isEmpty()) ? (" AS " + ctx.dialect().q(p.alias)) : "";
-                columns.add(expr + label);
+                columns.add(expr + label + orderBy);
             } else if (p.kind == SelectionPart.Kind.COLUMN) {
                 Class<?> et = (p.entityType != null ? p.entityType : this.meta.type);
                 String tableAlias = getAlias(et);
@@ -315,7 +349,7 @@ public class Query<T> implements Serializable {
                         (tableAlias != null ? ctx.dialect().q(tableAlias) + "." : "")
                                 + ctx.dialect().q(columnName);
                 String label = (p.alias != null && !p.alias.isEmpty()) ? (" AS " + ctx.dialect().q(p.alias)) : "";
-                columns.add(aliased + label);
+                columns.add(aliased + label + orderBy);
             } else if (p.kind == SelectionPart.Kind.AGGREGATE) {
                 // Function name
                 String func = p.aggregateFunction.name(); // SUM, AVG, COUNT, MIN, MAX
@@ -337,7 +371,7 @@ public class Query<T> implements Serializable {
 
                 String expression = func + "(" + arg + ")";
                 String label = (p.alias != null && !p.alias.isEmpty()) ? (" AS " + ctx.dialect().q(p.alias)) : "";
-                columns.add(expression + label);
+                columns.add(expression + label + orderBy);
             }
         }
 

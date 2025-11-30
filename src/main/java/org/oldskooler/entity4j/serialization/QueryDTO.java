@@ -1,6 +1,8 @@
 package org.oldskooler.entity4j.serialization;
 
 import com.google.gson.annotations.SerializedName;
+import org.oldskooler.entity4j.select.SelectionOrder;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,7 +21,10 @@ public class QueryDTO {
     private List<ParameterDTO> parameters = new ArrayList<>();
 
     @SerializedName("orderBy")
-    private List<String> orderBys = new ArrayList<>();
+    private List<SelectionDTO> orderBys = new ArrayList<>();
+
+    @SerializedName("groupBy")
+    private List<SelectionDTO> groupBys = new ArrayList<>();
 
     @SerializedName("limit")
     private Integer limit;
@@ -67,12 +72,20 @@ public class QueryDTO {
         this.parameters = parameters;
     }
 
-    public List<String> getOrderBys() {
+    public List<SelectionDTO> getOrderBys() {
         return orderBys;
     }
 
-    public void setOrderBys(List<String> orderBys) {
+    public void setOrderBys(List<SelectionDTO> orderBys) {
         this.orderBys = orderBys;
+    }
+
+    public List<SelectionDTO> getGroupBys() {
+        return groupBys;
+    }
+
+    public void setGroupBys(List<SelectionDTO> groupBys) {
+        this.groupBys = groupBys;
     }
 
     public Integer getLimit() {
@@ -244,6 +257,9 @@ public class QueryDTO {
         @SerializedName("expr")
         private String expression;
 
+        @SerializedName("orderBy")
+        private SelectionOrder orderBy;
+
         public SelectionDTO() {}
 
         public String getKind() {
@@ -300,6 +316,14 @@ public class QueryDTO {
 
         public void setExpression(String expression) {
             this.expression = expression;
+        }
+
+        public SelectionOrder getOrderBy() {
+            return orderBy;
+        }
+
+        public void setOrderBy(SelectionOrder orderBy) {
+            this.orderBy = orderBy;
         }
     }
 }

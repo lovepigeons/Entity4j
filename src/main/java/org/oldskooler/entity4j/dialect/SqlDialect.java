@@ -48,12 +48,12 @@ public interface SqlDialect {
         // sensible defaults for Postgres/MySQL/SQLite
         if (limit == null && offset == null) return selectSql;
         StringBuilder s = new StringBuilder(selectSql);
-        if (groupByClause != null && !selectSql.toLowerCase(Locale.ROOT).contains("group by")) {
-            s.append(" GROUP BY ").append(groupByClause);
-        }
-        if (orderByClause != null && !selectSql.toLowerCase(Locale.ROOT).contains("order by")) {
-            s.append(" ORDER BY ").append(orderByClause);
-        }
+        // if (groupByClause != null && !selectSql.toLowerCase(Locale.ROOT).contains("group by")) {
+        //    s.append(" GROUP BY ").append(groupByClause);
+        // }
+        // if (orderByClause != null && !selectSql.toLowerCase(Locale.ROOT).contains("order by")) {
+        //    s.append(" ORDER BY ").append(orderByClause);
+        // }
         if (limit != null) s.append(" LIMIT ").append(limit);
         if (offset != null) s.append(" OFFSET ").append(offset);
         return s.toString();

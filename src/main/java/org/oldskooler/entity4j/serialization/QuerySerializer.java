@@ -4,8 +4,8 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import org.oldskooler.entity4j.IDbContext;
 import org.oldskooler.entity4j.Query;
-import org.oldskooler.entity4j.functions.SerializableSupplier;
 import org.oldskooler.entity4j.mapping.TableMeta;
+import org.oldskooler.entity4j.select.SelectionOrder;
 import org.oldskooler.entity4j.select.SelectionPart;
 
 import java.lang.reflect.Constructor;
@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Serializes and deserializes Query objects to/from JSON.
@@ -21,7 +22,6 @@ import java.util.function.Supplier;
  */
 public class QuerySerializer {
     private final Gson gson;
-    private final SupplierSerializer supplierSerializer;
 
     public QuerySerializer() {
         this.gson = new GsonBuilder()
@@ -29,13 +29,10 @@ public class QuerySerializer {
                 .disableHtmlEscaping()
                 //.serializeNulls()
                 .create();
-
-        this.supplierSerializer = new SupplierSerializer();
     }
 
     public QuerySerializer(Gson customGson) {
         this.gson = customGson;
-        this.supplierSerializer = new SupplierSerializer();
     }
 
     /**
@@ -63,7 +60,6 @@ public class QuerySerializer {
 
         dto.setEntityTypeClassName(query.getEntityType().getName());
         dto.setWhereClause(query.getWhereClause());
-        dto.setOrderBys(query.getOrderBys());
         dto.setLimit(query.getLimit());
         dto.setOffset(query.getOffset());
         dto.setBaseAlias(query.getBaseAlias());
@@ -115,6 +111,45 @@ public class QuerySerializer {
         }
         dto.setSelectionParts(selectionDTOs);
 
+        // Serialize group by parts
+        List<QueryDTO.SelectionDTO> groupByDTOs = new ArrayList<>();
+        for (SelectionPart part : query.getGroupBys()) {
+            QueryDTO.SelectionDTO selDTO = new QueryDTO.SelectionDTO();
+            selDTO.setKind(part.kind.name());
+            selDTO.setEntityTypeClassName(
+                    part.entityType != null ? part.entityType.getName() : null
+            );
+            selDTO.setPropertyName(part.propertyName);
+            selDTO.setAlias(part.alias);
+            if (part.aggregateFunction != null) {
+                selDTO.setAggregateFunction(part.aggregateFunction.name());
+            }
+            selDTO.setDistinct(part.distinct);
+            selDTO.setExpression(part.expression != null ? part.expression.get() : null);
+            groupByDTOs.add(selDTO);
+        }
+        dto.setGroupBys(groupByDTOs);
+
+        // Serialize order by parts
+        List<QueryDTO.SelectionDTO> orderByDTOs = new ArrayList<>();
+        for (SelectionPart part : query.getOrderBys()) {
+            QueryDTO.SelectionDTO selDTO = new QueryDTO.SelectionDTO();
+            selDTO.setKind(part.kind.name());
+            selDTO.setEntityTypeClassName(
+                    part.entityType != null ? part.entityType.getName() : null
+            );
+            selDTO.setPropertyName(part.propertyName);
+            selDTO.setAlias(part.alias);
+            if (part.aggregateFunction != null) {
+                selDTO.setAggregateFunction(part.aggregateFunction.name());
+            }
+            selDTO.setDistinct(part.distinct);
+            selDTO.setExpression(part.expression != null ? part.expression.get() : null);
+            selDTO.setOrderBy(part.orderBy);
+            orderByDTOs.add(selDTO);
+        }
+        dto.setOrderBys(orderByDTOs);
+
         return dto;
     }
 
@@ -141,11 +176,6 @@ public class QuerySerializer {
             // Restore WHERE clause and parameters using reflection
             restoreWhereAndParams(query, dto);
 
-            // Restore ORDER BY
-            List<String> orderBys = getOrderBysField(query);
-            orderBys.clear();
-            orderBys.addAll(dto.getOrderBys());
-
             // Restore pagination
             query.limit(dto.getLimit());
             query.offset(dto.getOffset());
@@ -155,6 +185,9 @@ public class QuerySerializer {
 
             // Restore selection parts using reflection
             restoreSelections(query, dto);
+
+            restoreGroupBys(query, dto);
+            restoreOrderBys(query, dto);
 
             return query;
         } catch (Exception e) {
@@ -185,10 +218,17 @@ public class QuerySerializer {
     }
 
     @SuppressWarnings("unchecked")
-    private List<String> getOrderBysField(Query<?> query) throws Exception {
+    private List<Supplier<String>> getOrderBysField(Query<?> query) throws Exception {
         Field orderBysField = Query.class.getDeclaredField("orderBys");
         orderBysField.setAccessible(true);
-        return (List<String>) orderBysField.get(query);
+        return (List<Supplier<String>>) orderBysField.get(query);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Supplier<String>> getGroupBysField(Query<?> query) throws Exception {
+        Field orderBysField = Query.class.getDeclaredField("groupBys");
+        orderBysField.setAccessible(true);
+        return (List<Supplier<String>>) orderBysField.get(query);
     }
 
     @SuppressWarnings("unchecked")
@@ -248,61 +288,130 @@ public class QuerySerializer {
         hasExplicitSelectField.setAccessible(true);
         hasExplicitSelectField.set(query, dto.isHasExplicitSelect());
 
-        // Access internal selectionParts list
-        Field selectionPartsField = Query.class.getDeclaredField("selectionParts");
-        selectionPartsField.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        List<SelectionPart> selectionParts = (List<SelectionPart>) selectionPartsField.get(query);
-        selectionParts.clear();
+        // Restore selection parts
+        restoreQueryParts(
+                query,
+                "selectionParts",
+                SelectionPart.class,
+                dto.getSelectionParts()
+        );
+    }
 
-        if (dto.getSelectionParts() == null || dto.getSelectionParts().isEmpty()) {
+    @SuppressWarnings("unchecked")
+    private void restoreOrderBys(Query<?> query, QueryDTO dto) throws Exception {
+        restoreQueryParts(
+                query,
+                "orderBys",
+                SelectionPart.class,
+                dto.getOrderBys()
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    private void restoreGroupBys(Query<?> query, QueryDTO dto) throws Exception {
+        restoreQueryParts(
+                query,
+                "groupBys",
+                SelectionPart.class,
+                dto.getGroupBys()
+        );
+    }
+
+    /**
+     * Generic method to restore query parts (SelectionPart, OrderByPart, GroupByPart)
+     *
+     * @param query The Query object to restore parts into
+     * @param fieldName The name of the field in Query class (e.g., "selectionParts")
+     * @param partClass The class type of the part (SelectionPart.class, OrderByPart.class, etc.)
+     * @param dtoList The list of DTOs containing the serialized part data
+     */
+    @SuppressWarnings("unchecked")
+    private <T, D extends QueryDTO.SelectionDTO> void restoreQueryParts(
+            Query<?> query,
+            String fieldName,
+            Class<T> partClass,
+            List<D> dtoList) throws Exception {
+
+        // Access internal parts list
+        Field partsField = Query.class.getDeclaredField(fieldName);
+        partsField.setAccessible(true);
+        List<T> parts = (List<T>) partsField.get(query);
+        parts.clear();
+
+        if (dtoList == null || dtoList.isEmpty()) {
             return;
         }
 
-        // Reflective access to SelectionPart private ctor:
-        // SelectionPart(Kind kind, Class<?> entityType, String propertyName,
-        //               String alias, AggregateFunction aggregateFunction, boolean distinct)
-        Constructor<SelectionPart> ctor = SelectionPart.class.getDeclaredConstructor(
-                SelectionPart.Kind.class,
-                Class.class,
-                String.class,
-                String.class,
-                SelectionPart.AggregateFunction.class,
-                boolean.class,
-                SerializableSupplier.class
-        );
+        // Get the appropriate constructor based on part type
+        Constructor<T> ctor = getPartConstructor(partClass);
         ctor.setAccessible(true);
 
-        for (QueryDTO.SelectionDTO selDTO : dto.getSelectionParts()) {
+        // Reconstruct each part
+        for (D partDTO : dtoList) {
+            T part = createPartFromDTO(ctor, partClass, partDTO);
+            parts.add(part);
+        }
+    }
+
+    /**
+     * Get the constructor for the specific part type
+     */
+    @SuppressWarnings("unchecked")
+    private <T> Constructor<T> getPartConstructor(Class<T> partClass) throws NoSuchMethodException {
+            return (Constructor<T>) SelectionPart.class.getDeclaredConstructor(
+                    SelectionPart.Kind.class,
+                    Class.class,
+                    String.class,
+                    String.class,
+                    SelectionPart.AggregateFunction.class,
+                    boolean.class,
+                    Supplier.class,
+                    SelectionOrder.class
+            );
+
+    }
+
+    /**
+     * Create a part instance from its DTO representation
+     */
+    @SuppressWarnings("unchecked")
+    private <T, D extends QueryDTO.SelectionDTO> T createPartFromDTO(
+            Constructor<T> ctor,
+            Class<T> partClass,
+            D partDTO) throws Exception {
+
+            QueryDTO.SelectionDTO selDTO = (QueryDTO.SelectionDTO) partDTO;
             SelectionPart.Kind kind = SelectionPart.Kind.valueOf(selDTO.getKind());
-
-            Class<?> entityType = null;
-            if (selDTO.getEntityTypeClassName() != null) {
-                entityType = Class.forName(selDTO.getEntityTypeClassName());
-            }
-
+            Class<?> entityType = getEntityType(selDTO.getEntityTypeClassName());
             String propertyName = selDTO.getPropertyName();
             String alias = selDTO.getAlias();
-
-            SelectionPart.AggregateFunction agg = null;
-            if (selDTO.getAggregateFunction() != null) {
-                agg = SelectionPart.AggregateFunction.valueOf(selDTO.getAggregateFunction());
-            }
-
+            SelectionPart.AggregateFunction agg = getAggregateFunction(selDTO.getAggregateFunction());
             boolean distinct = selDTO.isDistinct();
-            SerializableSupplier<String> expr = selDTO.getExpression() != null ? selDTO::getExpression : null;
+            Supplier<String> expr = createExpressionSupplier(selDTO.getExpression());
+            SelectionOrder order = selDTO.getOrderBy();
 
-            SelectionPart part = ctor.newInstance(
-                    kind,
-                    entityType,
-                    propertyName,
-                    alias,
-                    agg,
-                    distinct,
-                    expr
-            );
-            selectionParts.add(part);
-        }
+            return ctor.newInstance(kind, entityType, propertyName, alias, agg, distinct, expr, order);
+    }
+
+    /**
+     * Helper method to resolve entity type from class name
+     */
+    private Class<?> getEntityType(String className) throws ClassNotFoundException {
+        return className != null ? Class.forName(className) : null;
+    }
+
+    /**
+     * Helper method to resolve aggregate function from string
+     */
+    private SelectionPart.AggregateFunction getAggregateFunction(String functionName) {
+        return functionName != null ? SelectionPart.AggregateFunction.valueOf(functionName) : null;
+    }
+
+    /**
+     * Helper method to create expression supplier
+     */
+    private Supplier<String> createExpressionSupplier(String expression) {
+        return expression != null ? () -> expression : null;
     }
 
 }
