@@ -182,7 +182,7 @@ try (Connection conn = DriverManager.getConnection(...);
 
 ### Querying with Lambdas
 
-This example shwows updating, querying, and deleting.
+This example shows updating, querying, and deleting.
 
 ```java
 // Update
@@ -193,10 +193,11 @@ User ada = ctx.from(User.class)
 ada.setRating(new java.math.BigDecimal("4.95"));
 ctx.update(ada);
 
-// Query
+// Query with ordering
 List<User> results = ctx.from(User.class)
     .filter(f -> f.equals(User::getActive, true))
-    .orderBy(User::getRating, false)
+    .orderBy(o -> o
+        .col(User::getRating).desc())
     .limit(5)
     .toList();
 
@@ -241,7 +242,8 @@ List<User> advanced = ctx.from(User.class)
         .and()
         .like(User::getName, "%Ada%")
         .close())
-    .orderBy(User::getRating, false)
+    .orderBy(o -> o
+        .col(User::getRating).desc())
     .limit(10)
     .toList();
 ```
@@ -276,7 +278,8 @@ Query<User> query = ctx.from(User.class)
         .col(User::getName).as("name")
         .col(User::getRating).as("rating"))
     .filter(f -> f.equals(User::getStatus, "ACTIVE"))
-    .orderBy(User::getName, true);
+    .orderBy(o -> o
+        .col(User::getName).asc());
 
 // Get results as maps (no class binding required)
 List<Map<String, Object>> maps = query.toMapList();
@@ -364,7 +367,8 @@ List<UserSummaryDto> summaries = ctx.from(User.class)
         .col(User::getName).as("name")        // Maps to DTO's name field  
         .col(User::getRating).as("rating"))   // Maps to DTO's rating field
     .filter(f -> f.equals(User::getStatus, "ACTIVE"))
-    .orderBy(User::getName, true)
+    .orderBy(o -> o
+        .col(User::getName).asc())
     .toList(UserSummaryDto.class);
 ```
 
@@ -481,12 +485,13 @@ public class Order {
 }
 ```
 
-Multi-column ordering
+### Multi-column ordering
 
 ```java
 List<User> users = ctx.from(User.class)
-    .orderBy(User::getStatus, true)          // ORDER BY status ASC
-    .thenBy(User::getCreatedAt, false)       // , createdAt DESC
+    .orderBy(o -> o
+        .col(User::getStatus).asc()
+        .col(User::getCreatedAt).desc())
     .toList();
 ```
 
@@ -497,11 +502,12 @@ SELECT * FROM users
 ORDER BY status ASC, created_at DESC
 ```
 
-2. Pagination with limit + offset
+### Pagination with limit + offset
 
 ```java
 List<User> page = ctx.from(User.class)
-    .orderBy(User::getCreatedAt, false) // newest first
+    .orderBy(o -> o
+        .col(User::getCreatedAt).desc()) // newest first
     .offset(20)                         // skip first 20
     .limit(10)                          // take next 10
     .toList();
@@ -523,7 +529,7 @@ ORDER BY created_at DESC
 OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY
 ```
 
-### 3. Join with filtering on joined table
+### Join with filtering on joined table
 
 ```java
 List<User> richActiveUsers = ctx.from(User.class).as("u")
@@ -532,8 +538,9 @@ List<User> richActiveUsers = ctx.from(User.class).as("u")
     .filter(f -> f.equals(User::getStatus, "ACTIVE")
         .and()
         .greater(Order.class, Order::getTotal, 1000.0)) // o.total > 1000
-    .orderBy(User::getName, true)
-    .thenBy(Order.class, Order::getPlacedAt, false)
+    .orderBy(o -> o
+        .col(User::getName).asc()
+        .col(Order.class, Order::getPlacedAt).desc())
     .limit(50)
     .toList();
 ```
@@ -551,7 +558,7 @@ LIMIT 50
 
 Params would be `[?1=ACTIVE, ?2=1000.0]`.
 
-### 4. Complex Join with Column Selection
+### Complex Join with Column Selection
 
 Here's a more complete example showing joins with column selection into a custom DTO:
 
@@ -575,8 +582,9 @@ List<UserOrderDto> results = ctx.from(User.class).as("u")
         .col(User::getName).as("name")
         .col(Order.class, Order::getTotal).as("total"))  // Note: Order.class required
     .filter(f -> f.equals(User::getStatus, "ACTIVE"))
-    .orderBy(User::getName, true)
-    .thenBy(Order.class, Order::getPlacedAt, false)
+    .orderBy(o -> o
+        .col(User::getName).asc()
+        .col(Order.class, Order::getPlacedAt).desc())
     .toList(UserOrderDto.class);
 ```
 

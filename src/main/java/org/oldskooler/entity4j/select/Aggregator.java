@@ -14,7 +14,8 @@ public final class Aggregator extends Selector {
     // Column selection with order
     @Override
     public <T, R> Aggregator col(SFunction<T, R> getter) {
-        throw new UnsupportedOperationException("Aggregator requires SelectionOrder - use col(getter, order)");
+        super.col(getter);
+        return this;
     }
 
     public <T, R> Aggregator col(SFunction<T, R> getter, SelectionOrder order) {
@@ -35,7 +36,8 @@ public final class Aggregator extends Selector {
     // Computed expressions with order
     @Override
     public Aggregator computed(Supplier<String> expression) {
-        throw new UnsupportedOperationException("Aggregator requires SelectionOrder - use computed(expression, order)");
+        super.computed(expression);
+        return this;
     }
 
     public Aggregator computed(Supplier<String> expression, SelectionOrder order) {
@@ -51,7 +53,8 @@ public final class Aggregator extends Selector {
     // Aggregates - SUM with order
     @Override
     public <T, R> Aggregator sum(SFunction<T, R> getter) {
-        throw new UnsupportedOperationException("Aggregator requires SelectionOrder - use sum(getter, order)");
+        super.sum(getter);
+        return this;
     }
 
     public <T, R> Aggregator sum(SFunction<T, R> getter, SelectionOrder order) {
@@ -67,7 +70,8 @@ public final class Aggregator extends Selector {
     // Aggregates - AVG with order
     @Override
     public <T, R> Aggregator avg(SFunction<T, R> getter) {
-        throw new UnsupportedOperationException("Aggregator requires SelectionOrder - use avg(getter, order)");
+        super.avg(getter);
+        return this;
     }
 
     public <T, R> Aggregator avg(SFunction<T, R> getter, SelectionOrder order) {
@@ -83,7 +87,8 @@ public final class Aggregator extends Selector {
     // Aggregates - MAX with order
     @Override
     public <T, R> Aggregator max(SFunction<T, R> getter) {
-        throw new UnsupportedOperationException("Aggregator requires SelectionOrder - use max(getter, order)");
+        super.max(getter);
+        return this;
     }
 
     public <T, R> Aggregator max(SFunction<T, R> getter, SelectionOrder order) {
@@ -99,7 +104,8 @@ public final class Aggregator extends Selector {
     // Aggregates - MIN with order
     @Override
     public <T, R> Aggregator min(SFunction<T, R> getter) {
-        throw new UnsupportedOperationException("Aggregator requires SelectionOrder - use min(getter, order)");
+        super.min(getter);
+        return this;
     }
 
     public <T, R> Aggregator min(SFunction<T, R> getter, SelectionOrder order) {
@@ -115,7 +121,8 @@ public final class Aggregator extends Selector {
     // Aggregates - COUNT with order
     @Override
     public Aggregator count() {
-        throw new UnsupportedOperationException("Aggregator requires SelectionOrder - use count(order)");
+        super.count();
+        return this;
     }
 
     public Aggregator count(SelectionOrder order) {
@@ -125,7 +132,8 @@ public final class Aggregator extends Selector {
 
     @Override
     public <T, R> Aggregator count(SFunction<T, R> getter) {
-        throw new UnsupportedOperationException("Aggregator requires SelectionOrder - use count(getter, order)");
+        super.count(getter);
+        return this;
     }
 
     public <T, R> Aggregator count(SFunction<T, R> getter, SelectionOrder order) {
@@ -140,7 +148,8 @@ public final class Aggregator extends Selector {
 
     @Override
     public <T, R> Aggregator countDistinct(SFunction<T, R> getter) {
-        throw new UnsupportedOperationException("Aggregator requires SelectionOrder - use countDistinct(getter, order)");
+        super.countDistinct(getter);
+        return this;
     }
 
     public <T, R> Aggregator countDistinct(SFunction<T, R> getter, SelectionOrder order) {
@@ -153,10 +162,98 @@ public final class Aggregator extends Selector {
         return this;
     }
 
+    public Aggregator asc() {
+        if (!parts.isEmpty()) {
+            SelectionPart last = parts.get(parts.size() - 1);
+            if (last.kind != SelectionPart.Kind.STAR) {
+                parts.set(parts.size() - 1, last.withOrder(SelectionOrder.ASC));
+            }
+        }
+        return this;
+    }
+
+    public Aggregator desc() {
+        if (!parts.isEmpty()) {
+            SelectionPart last = parts.get(parts.size() - 1);
+            if (last.kind != SelectionPart.Kind.STAR) {
+                parts.set(parts.size() - 1, last.withOrder(SelectionOrder.DESC));
+            }
+        }
+        return this;
+    }
+
     // Override as() to return Aggregator type
     @Override
     public Aggregator as(String alias) {
         super.as(alias);
+        return this;
+    }
+
+    // Star selection
+    @Override
+    public <E> Aggregator all(Class<E> entity) {
+        super.all(entity);
+        return this;
+    }
+
+    // Aggregates - SUM (entity version)
+    @Override
+    public <E, T, R> Aggregator sum(Class<E> entity, SFunction<T, R> getter) {
+        super.sum(entity, getter);
+        return this;
+    }
+
+    // Aggregates - AVG (entity version)
+    @Override
+    public <E, T, R> Aggregator avg(Class<E> entity, SFunction<T, R> getter) {
+        super.avg(entity, getter);
+        return this;
+    }
+
+    // Aggregates - MAX (entity version)
+    @Override
+    public <E, T, R> Aggregator max(Class<E> entity, SFunction<T, R> getter) {
+        super.max(entity, getter);
+        return this;
+    }
+
+    // Aggregates - MIN (entity version)
+    @Override
+    public <E, T, R> Aggregator min(Class<E> entity, SFunction<T, R> getter) {
+        super.min(entity, getter);
+        return this;
+    }
+
+    // Aggregates - COUNT (entity version)
+    @Override
+    public <E, T, R> Aggregator count(Class<E> entity, SFunction<T, R> getter) {
+        super.count(entity, getter);
+        return this;
+    }
+
+    @Override
+    public <E, T, R> Aggregator countDistinct(Class<E> entity, SFunction<T, R> getter) {
+        super.countDistinct(entity, getter);
+        return this;
+    }
+
+    // Column selection (entity versions)
+    @Override
+    public <E, R> Aggregator col(Class<E> entity, SFunction<E, R> getter) {
+        super.col(entity, getter);
+        return this;
+    }
+
+    @Override
+    public <E, R> Aggregator col(Class<E> entity, SFunction<E, R> getter, String alias) {
+        super.col(entity, getter, alias);
+        return this;
+    }
+
+    // Computed expressions (entity version)
+    @Override
+    public <E> Aggregator computed(Class<E> entity, Supplier<String> expression) {
+        super.computed(entity, expression);
         return this;
     }
 }

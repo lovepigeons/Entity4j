@@ -95,10 +95,10 @@ public final class SelectionPart implements Serializable {
     }
 
     public SelectionPart withAlias(String alias) {
-        return withAlias(alias, null);
+        return new SelectionPart(kind, entityType, propertyName, alias, aggregateFunction, distinct, expression, orderBy);
     }
 
-    public SelectionPart withAlias(String alias, SelectionOrder order) {
+    public SelectionPart withOrder(SelectionOrder order) {
         return new SelectionPart(kind, entityType, propertyName, alias, aggregateFunction, distinct, expression, order);
     }
 

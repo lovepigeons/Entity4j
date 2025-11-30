@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public class Selector implements Serializable {
-    private final List<SelectionPart> parts = new ArrayList<>();
+    protected final List<SelectionPart> parts = new ArrayList<>();
     private final Query<?> query;
 
     public Selector(Query<?> query) {
