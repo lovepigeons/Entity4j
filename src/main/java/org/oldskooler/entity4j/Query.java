@@ -196,7 +196,7 @@ public class Query<T> {
         return querySerializer.toJson(this);
     }
 
-    public static Query<?> fromJson(String json, IDbContext context) {
+    public static <T> Query<T> fromJson(String json, IDbContext context) {
         return querySerializer.fromJson(json, context);
     }
 
