@@ -5,6 +5,7 @@ import org.oldskooler.entity4j.mapping.SetBuilder;
 import org.oldskooler.entity4j.mapping.TableMeta;
 import org.oldskooler.entity4j.select.SelectionPart;
 import org.oldskooler.entity4j.select.Selector;
+import org.oldskooler.entity4j.serialization.QuerySerializer;
 import org.oldskooler.entity4j.util.JdbcParamBinder;
 import org.oldskooler.entity4j.util.Names;
 import org.oldskooler.entity4j.util.LambdaUtils;
@@ -20,6 +21,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class Query<T> {
+    private static QuerySerializer querySerializer;
+
     private final IDbContext ctx;
     private final TableMeta<T> meta;
 
@@ -41,6 +44,10 @@ public class Query<T> {
 
     private boolean hasExplicitSelect = false;
     private final List<SelectionPart> selectionParts = new ArrayList<>();
+
+    static {
+        querySerializer = new QuerySerializer();
+    }
 
     public Query(IDbContext ctx, TableMeta<T> meta) {
         this.ctx = ctx;
@@ -183,6 +190,14 @@ public class Query<T> {
     public java.util.List<T> toList() {
         String sql = buildSelectSql();
         return ctx.executeQuery(meta, sql, params);
+    }
+
+    public String toJson() {
+        return querySerializer.toJson(this);
+    }
+
+    public static Query<?> fromJson(String json, IDbContext context) {
+        return querySerializer.fromJson(json, context);
     }
 
     public java.util.Optional<T> first() {
