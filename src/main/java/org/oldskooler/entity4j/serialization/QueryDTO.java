@@ -1,5 +1,6 @@
 package org.oldskooler.entity4j.serialization;
 
+import com.google.gson.annotations.SerializedName;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -8,15 +9,34 @@ import java.util.List;
  * This class contains all the state needed to reconstruct a Query.
  */
 public class QueryDTO {
+    @SerializedName("entityType")
     private String entityTypeClassName;
+
+    @SerializedName("where")
     private String whereClause;
+
+    @SerializedName("params")
     private List<ParameterDTO> parameters = new ArrayList<>();
+
+    @SerializedName("orderBy")
     private List<String> orderBys = new ArrayList<>();
+
+    @SerializedName("limit")
     private Integer limit;
+
+    @SerializedName("offset")
     private Integer offset;
+
+    @SerializedName("alias")
     private String baseAlias;
+
+    @SerializedName("joins")
     private List<JoinDTO> joins = new ArrayList<>();
+
+    @SerializedName("explicitSelect")
     private boolean hasExplicitSelect;
+
+    @SerializedName("selections")
     private List<SelectionDTO> selectionParts = new ArrayList<>();
 
     // Constructors
@@ -107,7 +127,10 @@ public class QueryDTO {
      * Represents a query parameter with its type information
      */
     public static class ParameterDTO {
+        @SerializedName("value")
         private Object value;
+
+        @SerializedName("type")
         private String typeClassName;
 
         public ParameterDTO() {}
@@ -138,10 +161,19 @@ public class QueryDTO {
      * Represents a JOIN clause
      */
     public static class JoinDTO {
+        @SerializedName("table")
         private String joinedTableName;
+
+        @SerializedName("entity")
         private String joinedEntityClassName;
+
+        @SerializedName("alias")
         private String alias;
+
+        @SerializedName("kind")
         private String kind;
+
+        @SerializedName("on")
         private String onSql;
 
         public JoinDTO() {}
@@ -191,11 +223,22 @@ public class QueryDTO {
      * Represents a SELECT clause part
      */
     public static class SelectionDTO {
+        @SerializedName("kind")
         private String kind; // COLUMN, STAR, AGGREGATE
+
+        @SerializedName("entityType")
         private String entityTypeClassName;
+
+        @SerializedName("property")
         private String propertyName;
+
+        @SerializedName("alias")
         private String alias;
+
+        @SerializedName("function")
         private String aggregateFunction; // SUM, AVG, COUNT, MIN, MAX
+
+        @SerializedName("distinct")
         private boolean distinct;
 
         public SelectionDTO() {}
