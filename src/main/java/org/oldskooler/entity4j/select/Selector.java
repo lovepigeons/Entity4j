@@ -1,5 +1,6 @@
 package org.oldskooler.entity4j.select;
 
+import org.oldskooler.entity4j.Query;
 import org.oldskooler.entity4j.functions.SFunction;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,6 +37,11 @@ public final class Selector {
      */
     public <E> Selector all(Class<E> entity) {
         parts.add(SelectionPart.star(entity));
+        return this;
+    }
+
+    public <E> Selector computed(Class<E> entity, String expression) {
+        parts.add(SelectionPart.computed(entity, expression));
         return this;
     }
 
@@ -123,5 +129,9 @@ public final class Selector {
     public <E, T, R> Selector countDistinct(Class<E> entity, SFunction<T, R> getter) {
         parts.add(SelectionPart.aggregate(entity, SelectionPart.AggregateFunction.COUNT, getter, true, null));
         return this;
+    }
+
+    public Query<Object> computed(int getRating) {
+        return null;
     }
 }

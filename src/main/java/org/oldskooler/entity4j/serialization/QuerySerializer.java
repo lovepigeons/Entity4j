@@ -104,6 +104,7 @@ public class QuerySerializer {
                 selDTO.setAggregateFunction(part.aggregateFunction.name());
             }
             selDTO.setDistinct(part.distinct);
+            selDTO.setExpression(part.expression);
             selectionDTOs.add(selDTO);
         }
         dto.setSelectionParts(selectionDTOs);
@@ -261,7 +262,8 @@ public class QuerySerializer {
                 String.class,
                 String.class,
                 SelectionPart.AggregateFunction.class,
-                boolean.class
+                boolean.class,
+                String.class
         );
         ctor.setAccessible(true);
 
@@ -282,6 +284,7 @@ public class QuerySerializer {
             }
 
             boolean distinct = selDTO.isDistinct();
+            String expr = selDTO.getExpression();
 
             SelectionPart part = ctor.newInstance(
                     kind,
@@ -289,7 +292,8 @@ public class QuerySerializer {
                     propertyName,
                     alias,
                     agg,
-                    distinct
+                    distinct,
+                    expr
             );
             selectionParts.add(part);
         }

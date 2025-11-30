@@ -263,6 +263,12 @@ public class Query<T> {
             if (p.kind == SelectionPart.Kind.STAR) {
                 String alias = getAlias(p.entityType != null ? p.entityType : this.meta.type);
                 columns.add((alias != null ? ctx.dialect().q(alias) : "*") + ".*");
+
+            } else if (p.kind == SelectionPart.Kind.COMPUTED) {
+                Class<?> et = (p.entityType != null ? p.entityType : this.meta.type);
+                String expr = getAlias(et);
+                String label = (p.alias != null && !p.alias.isEmpty()) ? (" AS " + ctx.dialect().q(p.alias)) : "";
+                columns.add(expr + label);
             } else if (p.kind == SelectionPart.Kind.COLUMN) {
                 Class<?> et = (p.entityType != null ? p.entityType : this.meta.type);
                 String tableAlias = getAlias(et);

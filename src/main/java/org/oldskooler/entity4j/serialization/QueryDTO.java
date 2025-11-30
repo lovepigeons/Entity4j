@@ -224,7 +224,7 @@ public class QueryDTO {
      */
     public static class SelectionDTO {
         @SerializedName("kind")
-        private String kind; // COLUMN, STAR, AGGREGATE
+        private String kind; // COLUMN, STAR, AGGREGATE, COMPUTED
 
         @SerializedName("entityType")
         private String entityTypeClassName;
@@ -240,6 +240,9 @@ public class QueryDTO {
 
         @SerializedName("distinct")
         private boolean distinct;
+
+        @SerializedName("expr")
+        private String expression;
 
         public SelectionDTO() {}
 
@@ -289,6 +292,14 @@ public class QueryDTO {
 
         public void setDistinct(boolean distinct) {
             this.distinct = distinct;
+        }
+
+        public String getExpression() {
+            return expression;
+        }
+
+        public void setExpression(String expression) {
+            this.expression = expression;
         }
     }
 }
