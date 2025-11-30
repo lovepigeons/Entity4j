@@ -118,11 +118,12 @@ public class Query<T> implements Serializable {
         return this;
     }
 
-    public Query<T> filter(Function<Filters<T>, Filters<T>> builder) {
+    public Query<T> filter(Consumer<Filters<T>> builder) {
         Filters<T> f = new Filters<>(this, meta);
-        builder.apply(f);
+        builder.accept(f);
         return this;
     }
+
 
     /*
     public Query<T> orderBy(SFunction<T, ?> getter, boolean asc) {
