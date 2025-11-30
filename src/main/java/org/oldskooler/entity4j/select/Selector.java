@@ -148,9 +148,9 @@ public final class Selector implements Serializable {
         return this;
     }
 
-    public Selector countStar() {
+    public Selector count() {
         // COUNT(*) - alias can be set with .as(...)
-        parts.add(SelectionPart.countStar(null));
+        parts.add(SelectionPart.count(null));
         return this;
     }
 

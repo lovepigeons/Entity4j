@@ -44,10 +44,13 @@ public interface SqlDialect {
         return "";
     }
 
-    default String paginate(String selectSql, String orderByClause, Integer limit, Integer offset) {
+    default String paginate(String selectSql, String groupByClause, String orderByClause, Integer limit, Integer offset) {
         // sensible defaults for Postgres/MySQL/SQLite
         if (limit == null && offset == null) return selectSql;
         StringBuilder s = new StringBuilder(selectSql);
+        if (groupByClause != null && !selectSql.toLowerCase(Locale.ROOT).contains("group by")) {
+            s.append(" GROUP BY ").append(groupByClause);
+        }
         if (orderByClause != null && !selectSql.toLowerCase(Locale.ROOT).contains("order by")) {
             s.append(" ORDER BY ").append(orderByClause);
         }

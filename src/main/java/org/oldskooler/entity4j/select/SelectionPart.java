@@ -64,7 +64,7 @@ public final class SelectionPart implements Serializable {
     }
 
     // convenience for COUNT(*)
-    public static SelectionPart countStar(String alias) {
+    public static SelectionPart count(String alias) {
         return new SelectionPart(Kind.AGGREGATE, null, null, alias, AggregateFunction.COUNT, false, null);
     }
 

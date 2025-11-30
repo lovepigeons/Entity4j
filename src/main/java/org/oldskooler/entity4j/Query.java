@@ -34,6 +34,10 @@ public class Query<T> implements Serializable {
     // Multi-ORDER BY
     private final List<String> orderBys = new ArrayList<>();
 
+    // Multi-GROUP BY
+    private final List<String> groupBys = new ArrayList<>();
+
+
     // Pagination
     private Integer limit = null;
     private Integer offset = null;
@@ -71,6 +75,10 @@ public class Query<T> implements Serializable {
 
     public List<String> getOrderBys() {
         return new ArrayList<>(orderBys);
+    }
+
+    public List<String> getGroupBys() {
+        return new ArrayList<>(groupBys);
     }
 
     public Integer getLimit() {
@@ -119,9 +127,8 @@ public class Query<T> implements Serializable {
         orderBys.add(qualify(meta, getter, asc));
         return this;
     }
-
     /** Add another ORDER BY on base table (same as calling orderBy again). */
-    public Query<T> thenBy(SFunction<T, ?> getter, boolean asc) {
+    public Query<T> thenOrderBy(SFunction<T, ?> getter, boolean asc) {
         return orderBy(getter, asc);
     }
 
@@ -132,8 +139,29 @@ public class Query<T> implements Serializable {
     }
 
     /** Add another ORDER BY using a joined type. */
-    public <J> Query<T> thenBy(Class<J> type, SFunction<J, ?> getter, boolean asc) {
+    public <J> Query<T> thenOrderBy(Class<J> type, SFunction<J, ?> getter, boolean asc) {
         return orderBy(type, getter, asc);
+    }
+
+    /** Backwards-compatible single-column ORDER BY on base table. */
+    public Query<T> groupBy(SFunction<T, ?> getter) {
+        groupBys.add(qualify(meta, getter));
+        return this;
+    }
+    /** Add another ORDER BY on base table (same as calling orderBy again). */
+    public Query<T> thenGroupBy(SFunction<T, ?> getter) {
+        return groupBy(getter);
+    }
+
+    /** ORDER BY using a getter from a joined type. */
+    public <J> Query<T> groupBy(Class<J> type, SFunction<J, ?> getter) {
+        groupBys.add(qualify(getMeta(type), getter));
+        return this;
+    }
+
+    /** Add another ORDER BY using a joined type. */
+    public <J> Query<T> thenGroupBy(Class<J> type, SFunction<J, ?> getter) {
+        return groupBy(type, getter);
     }
 
     public Query<T> limit(Integer n) { this.limit = n; return this; }
@@ -240,6 +268,13 @@ public class Query<T> implements Serializable {
         // WHERE
         if (where.length() > 0) sql.append(" WHERE ").append(where);
 
+        // GROUP BY (also fed to dialect for pagination variations)
+        String groupByClause = null;
+        if (!groupBys.isEmpty()) {
+            groupByClause = String.join(", ", groupBys);
+            sql.append(" GROUP BY ").append(groupByClause);
+        }
+
         // ORDER BY (also fed to dialect for pagination variations)
         String orderByClause = null;
         if (!orderBys.isEmpty()) {
@@ -247,8 +282,10 @@ public class Query<T> implements Serializable {
             sql.append(" ORDER BY ").append(orderByClause);
         }
 
+
+
         // Pagination is dialect-specific; let dialect rewrite/append as needed.
-        return ctx.dialect().paginate(sql.toString(), orderByClause, limit, offset);
+        return ctx.dialect().paginate(sql.toString(), groupByClause, orderByClause, limit, offset);
     }
 
     private String buildSelectClause() {
@@ -634,13 +671,17 @@ public class Query<T> implements Serializable {
         return this;
     }
 
-    // Turn getter into "alias.col ASC/DESC"
-    private <X> String qualify(TableMeta<X> m, SFunction<X, ?> getter, boolean asc) {
+    // Turn getter into "alias.col"
+    private <X> String qualify(TableMeta<X> m, SFunction<X, ?> getter) {
+        return qualify(m, getter, null);
+    }
+
+    private <X> String qualify(TableMeta<X> m, SFunction<X, ?> getter, Boolean asc) {
         String prop = LambdaUtils.propertyName(getter);
         String col = m.propToColumn.getOrDefault(prop, Names.defaultColumnName(prop));
         String alias = getAlias(m.type);
         String qcol = (alias != null ? ctx.dialect().q(alias) + "." : "") + ctx.dialect().q(col);
-        return qcol + (asc ? " ASC" : " DESC");
+        return qcol + (asc != null ? (asc ? " ASC" : " DESC") : "");
     }
 
     @SuppressWarnings("unchecked")
