@@ -1,5 +1,6 @@
 package org.oldskooler.entity4j;
 
+import lombok.var;
 import org.oldskooler.entity4j.functions.SFunction;
 import org.oldskooler.entity4j.mapping.SetBuilder;
 import org.oldskooler.entity4j.mapping.TableMeta;
@@ -302,6 +303,111 @@ public class Query<T> implements Serializable {
         // Pagination is dialect-specific; let dialect rewrite/append as needed.
         return ctx.dialect().paginate(sql.toString(), "", "", limit, offset);
     }
+
+    public String compileSelectSql() {
+        // Lambda implementing the formatter
+        var formatter = (Function<Object, String>) value -> {
+            if (value == null) {
+                return "NULL";
+            }
+
+            // Direct Number support (Integer, Long, Double, BigDecimal, etc.)
+            if (value instanceof Number) {
+                return value.toString();
+            }
+
+            // Boolean support
+            if (value instanceof Boolean) {
+                return value.toString();
+            }
+
+            // Strings that represent a number (e.g., "123", "45.67")
+            if (value instanceof CharSequence) {
+                var str = value.toString().trim();
+
+                // Try integer
+                try {
+                    Long.parseLong(str);
+                    return str; // numeric string → no quotes
+                } catch (NumberFormatException ignore) {}
+
+                // Try decimal
+                try {
+                    new java.math.BigDecimal(str);
+                    return str; // decimal string → no quotes
+                } catch (NumberFormatException ignore) {}
+
+                // Otherwise treat as a normal string
+                String escaped = str.replace("'", "''");
+                return "'" + escaped + "'";
+            }
+
+            // Fallback: quote everything else (e.g., enums)
+            String escaped = value.toString().replace("'", "''");
+            return "'" + escaped + "'";
+        };
+
+        StringBuilder sql = new StringBuilder("SELECT ");
+
+        sql.append(buildSelectClause());
+
+        sql.append(" FROM ").append(ctx.dialect().q(meta.table));
+        if (baseAlias != null) {
+            sql.append(' ').append(ctx.dialect().q(baseAlias));
+        }
+
+        // Joins
+        for (JoinPart<?> j : joins) {
+            sql.append(' ')
+                    .append(j.kind).append(' ')
+                    .append(ctx.dialect().q(j.meta.table)).append(' ')
+                    .append(ctx.dialect().q(j.alias))
+                    .append(" ON ").append(j.onSql);
+        }
+
+        // WHERE
+        if (where.length() > 0) {
+            sql.append(" WHERE ").append(where);
+        }
+
+        // GROUP BY
+        if (!this.groupBys.isEmpty()) {
+            sql.append(" GROUP BY ");
+            sql.append(buildClause(this.groupBys));
+        }
+
+        // ORDER BY
+        if (!this.orderBys.isEmpty()) {
+            sql.append(" ORDER BY ");
+            sql.append(buildClause(this.orderBys));
+        }
+
+        // At this point, sql may contain "?" placeholders (especially in WHERE).
+        String rawSql = sql.toString();
+
+        // Assume you have: List<Object> params; // in same order as "?"
+        List<Object> params = this.params; // or however you access it
+
+        if (params != null && !params.isEmpty()) {
+            StringBuilder inlined = new StringBuilder(rawSql.length() + params.size() * 10);
+            int paramIndex = 0;
+
+            for (int i = 0; i < rawSql.length(); i++) {
+                char c = rawSql.charAt(i);
+                if (c == '?' && paramIndex < params.size()) {
+                    inlined.append(formatter.apply(params.get(paramIndex++)));
+                } else {
+                    inlined.append(c);
+                }
+            }
+
+            rawSql = inlined.toString();
+        }
+
+        // Pagination is dialect-specific; let dialect rewrite/append as needed.
+        return ctx.dialect().paginate(rawSql, "", "", limit, offset);
+    }
+
 
     private String buildSelectClause() {
         if (!hasExplicitSelect) {
