@@ -58,4 +58,13 @@ public interface SqlDialect {
         if (offset != null) s.append(" OFFSET ").append(offset);
         return s.toString();
     }
+
+    default String dropViewIfExistsSql(String viewName) {
+        // Override per-dialect if needed
+        return "DROP VIEW IF EXISTS " + q(viewName);
+    }
+
+    default String createViewSql(String viewName, String selectSql) {
+        return "CREATE VIEW " + q(viewName) + " AS " + selectSql;
+    }
 }
