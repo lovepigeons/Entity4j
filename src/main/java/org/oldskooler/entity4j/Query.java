@@ -294,23 +294,6 @@ public class Query<T> implements Serializable {
             sql.append(buildClause(this.orderBys));
         }
 
-        /*
-        // GROUP BY (also fed to dialect for pagination variations)
-        String groupByClause = null;
-        if (!groupBys.isEmpty()) {
-            groupByClause = String.join(", ", this.getGroupBys());
-            sql.append(" GROUP BY ").append(groupByClause);
-        }
-
-        // ORDER BY (also fed to dialect for pagination variations)
-        String orderByClause = null;
-        if (!orderBys.isEmpty()) {
-            orderByClause = String.join(", ", this.getOrderBys());
-            sql.append(" ORDER BY ").append(orderByClause);
-        }
-
-        */
-
         // Pagination is dialect-specific; let dialect rewrite/append as needed.
         return ctx.dialect().paginate(sql.toString(), "", "", limit, offset);
     }
