@@ -1,6 +1,6 @@
 plugins {
     id 'java-library'
-    // id("io.freefair.lombok") version "8.3"
+    id("io.freefair.lombok") version "8.3"
 }
 
 group = 'org.oldskooler'
@@ -12,7 +12,7 @@ repositories {
 }
 
 dependencies {
-    // implementation 'com.mysql:mysql-connector-j:9.5.0'
+    implementation 'com.mysql:mysql-connector-j:9.5.0'
     implementation 'com.google.code.gson:gson:2.13.2'
 }
 
