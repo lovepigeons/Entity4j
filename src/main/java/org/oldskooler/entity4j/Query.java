@@ -202,6 +202,11 @@ public class Query<T> implements Serializable {
         return addJoin(type, alias, "INNER JOIN", on);
     }
 
+    public String toSql() {
+        String sql = buildSelectSql();
+        return sql;
+    }
+
     /** Returns the SELECT plus a second line showing numbered parameter bindings. */
     public String toSqlWithParams() {
         String sql = buildSelectSql();

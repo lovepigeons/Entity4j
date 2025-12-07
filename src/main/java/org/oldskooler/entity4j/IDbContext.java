@@ -405,6 +405,38 @@ public abstract class IDbContext implements AutoCloseable {
         return getDdlOperations().dropTableIfExists(type);
     }
 
+    public void createView(String viewName, Query<?> query) {
+        String selectSql = query.toSql();
+        String createSql = dialect.createViewSql(viewName, selectSql);
+
+        try (PreparedStatement stmt = connection.prepareStatement(createSql)) {
+            stmt.executeUpdate();
+        } catch (SQLException ex) {
+            throw new RuntimeException("Failed to create view '" + viewName + "'", ex);
+        }
+    }
+
+    // 2) View name from mapped entity
+    public <T> void createView(Class<T> viewEntityType, Query<?> query) {
+        String viewName = TableMeta.of(viewEntityType, mappingRegistry).table;
+        createView(viewName, query);
+    }
+
+    public void dropViewIfExists(String viewName) {
+        String sql = dialect.dropViewIfExistsSql(viewName);
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.executeUpdate();
+        } catch (SQLException ex) {
+            throw new RuntimeException("Failed to drop view '" + viewName + "'", ex);
+        }
+    }
+
+    // 2) Drop by mapped entity (reuses table mapping)
+    public <T> void dropViewIfExists(Class<T> viewEntityType) {
+        String viewName = TableMeta.of(viewEntityType, mappingRegistry).table;
+        dropViewIfExists(viewName);
+    }
+
     // CRUD Operations
 
     /**
