@@ -406,7 +406,7 @@ public abstract class IDbContext implements AutoCloseable {
     }
 
     public void createView(String viewName, Query<?> query) {
-        String selectSql = query.toSql();
+        String selectSql = query.compileSelectSql();
         String createSql = dialect.createViewSql(viewName, selectSql);
 
         try (PreparedStatement stmt = connection.prepareStatement(createSql)) {
