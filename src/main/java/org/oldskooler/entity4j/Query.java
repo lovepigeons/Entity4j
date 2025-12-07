@@ -1,6 +1,5 @@
 package org.oldskooler.entity4j;
 
-import lombok.var;
 import org.oldskooler.entity4j.functions.SFunction;
 import org.oldskooler.entity4j.mapping.SetBuilder;
 import org.oldskooler.entity4j.mapping.TableMeta;
@@ -306,7 +305,7 @@ public class Query<T> implements Serializable {
 
     public String compileSelectSql() {
         // Lambda implementing the formatter
-        var formatter = (Function<Object, String>) value -> {
+        Function<Object, String> formatter = value -> {
             if (value == null) {
                 return "NULL";
             }
@@ -323,7 +322,7 @@ public class Query<T> implements Serializable {
 
             // Strings that represent a number (e.g., "123", "45.67")
             if (value instanceof CharSequence) {
-                var str = value.toString().trim();
+                String str = value.toString().trim();
 
                 // Try integer
                 try {
@@ -586,7 +585,7 @@ public class Query<T> implements Serializable {
     }
 
     /**
-     * Update rows but return a single Optional<T> for the first matching row (after update).
+     * Update rows but return a single Optional for the first matching row (after update).
      * Uses limit=1 for the select. The update itself ignores limit (UPDATE affects all matching
      * rows), so this returns the first updated row (if any).
      *
